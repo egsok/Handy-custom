@@ -23,6 +23,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # name = "cli"
 # path = "src/audio_toolkit/bin/cli.rs"
 
+[features]
+default = []
+cuda = ["whisper-rs/cuda"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 serde_json = "1"
@@ -69,6 +73,7 @@ rusqlite = { version = "0.37", features = ["bundled"] }
 tar = "0.4.44"
 flate2 = "1.0"
 transcribe-rs = { version = "0.2.8", features = ["whisper", "parakeet", "moonshine", "sense_voice", "gigaam"] }
+whisper-rs = { version = "0.13.2" }  # feature unification with transcribe-rs; enables cuda feature flag
 handy-keys = "0.2.2"
 ferrous-opencc = "0.2.3"
 clap = { version = "4", features = ["derive"] }

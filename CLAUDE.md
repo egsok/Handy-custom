@@ -155,5 +155,5 @@ Access debug features: `Cmd+Shift+D` (macOS) or `Ctrl+Shift+D` (Windows/Linux)
 ## Platform Notes
 
 - **macOS**: Metal acceleration, accessibility permissions required
-- **Windows**: Vulkan acceleration, code signing
+- **Windows**: Vulkan acceleration, code signing. CUDA build: install CUDA Toolkit 12.6+, then `bun run tauri build -- --features cuda` or use `scripts/build-cuda.sh` for auto-detection
 - **Linux**: OpenBLAS + Vulkan, limited Wayland support, overlay disabled by default

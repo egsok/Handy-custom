@@ -64,6 +64,11 @@ jobs:
           - platform: "windows-latest"
             args: ""
             target: "x86_64-pc-windows-msvc"
+          - platform: "windows-latest"
+            args: ""
+            target: "x86_64-pc-windows-msvc"
+            gpu-backend: "cuda"
+            asset-prefix: "handy-cuda"
           - platform: "windows-11-arm" # for ARM64 Windows runner
             args: "--target aarch64-pc-windows-msvc"
             target: "aarch64-pc-windows-msvc"
@@ -74,7 +79,8 @@ jobs:
       target: ${{ matrix.target }}
       build-args: ${{ matrix.args }}
       sign-binaries: true
-      asset-prefix: "handy"
+      asset-prefix: ${{ matrix.asset-prefix || 'handy' }}
       upload-artifacts: false
       release-id: ${{ needs.create-release.outputs.release-id }}
+      gpu-backend: ${{ matrix.gpu-backend || '' }}
     secrets: inherit

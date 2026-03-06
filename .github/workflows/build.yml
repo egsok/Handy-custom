@@ -43,6 +43,10 @@ on:
         required: false
         type: boolean
         default: false
+      gpu-backend:
+        required: false
+        type: string
+        default: ""
 
 jobs:
   build:
@@ -205,6 +209,28 @@ jobs:
           sudo apt install vulkan-sdk -y
           sudo apt-get install -y mesa-vulkan-drivers
 
+      - name: Install CUDA Toolkit (Windows x64)
+        if: inputs.gpu-backend == 'cuda' && contains(inputs.platform, 'windows') && !contains(inputs.target, 'aarch64')
+        uses: Jimver/cuda-toolkit@v0.2.21
+        with:
+          cuda: '12.6.3'
+          method: 'network'
+          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev"]'
+
+      - name: Bundle CUDA DLLs (Windows x64)
+        if: inputs.gpu-backend == 'cuda' && contains(inputs.platform, 'windows') && !contains(inputs.target, 'aarch64')
+        shell: bash
+        run: |
+          mkdir -p src-tauri/resources/cuda
+          CUDA_BIN="$CUDA_PATH/bin"
+          echo "Copying CUDA DLLs from $CUDA_BIN"
+          cp "$CUDA_BIN"/cublas64_*.dll src-tauri/resources/cuda/
+          cp "$CUDA_BIN"/cublasLt64_*.dll src-tauri/resources/cuda/
+          # cudart is statically linked, but copy as fallback
+          cp "$CUDA_BIN"/cudart64_*.dll src-tauri/resources/cuda/ 2>/dev/null || true
+          echo "Bundled CUDA DLLs:"
+          ls -la src-tauri/resources/cuda/
+
       - name: install frontend dependencies
         if: ${{ !(contains(inputs.platform, 'windows') && contains(inputs.target, 'aarch64')) }}
         run: bun install
@@ -277,7 +303,7 @@ jobs:
           releaseName: ${{ inputs.release-id && format('v{0}', steps.get-version.outputs.version) || '' }}
           releaseId: ${{ inputs.release-id }}
           assetNamePattern: ${{ steps.patch-release-name.outputs.platform }}
-          args: ${{ inputs.build-args }}
+          args: ${{ inputs.gpu-backend == 'cuda' && format('{0} --features cuda', inputs.build-args) || inputs.build-args }}
 
       - name: Upload artifacts (macOS)
         if: inputs.upload-artifacts && contains(inputs.platform, 'macos')
