@@ -213,8 +213,8 @@ jobs:
         if: inputs.gpu-backend == 'cuda' && contains(inputs.platform, 'windows') && !contains(inputs.target, 'aarch64')
         uses: Jimver/cuda-toolkit@v0.2.21
         with:
-          cuda: '12.6.3'
-          method: 'network'
+          cuda: "12.6.3"
+          method: "network"
           sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev"]'
 
       - name: Bundle CUDA DLLs (Windows x64)
