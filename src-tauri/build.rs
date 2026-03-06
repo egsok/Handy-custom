@@ -1,10 +1,27 @@
 fn main() {
+    detect_cuda();
+
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     build_apple_intelligence_bridge();
 
     generate_tray_translations();
 
     tauri_build::build()
+}
+
+/// Detect CUDA Toolkit and emit `has_cuda` cfg flag.
+fn detect_cuda() {
+    println!("cargo:rerun-if-env-changed=CUDA_PATH");
+
+    if let Ok(cuda_path) = std::env::var("CUDA_PATH") {
+        if std::path::Path::new(&cuda_path).exists() {
+            println!("cargo:rustc-cfg=has_cuda");
+            println!("cargo:warning=CUDA Toolkit detected at {cuda_path}");
+            return;
+        }
+    }
+
+    println!("cargo:warning=CUDA Toolkit not found, Vulkan-only build");
 }
 
 /// Generate tray menu translations from frontend locale files.
