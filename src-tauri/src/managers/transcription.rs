@@ -570,6 +570,20 @@ impl TranscriptionManager {
                                         Some(parts.join("\n\n"))
                                     }
                                 },
+                                // Anti-hallucination: cap cross-segment context to break
+                                // feedback loops, drop low-confidence (often hallucinated)
+                                // segments. Toggleable via settings.
+                                // Per OpenWhispr PR #552 / whisper.cpp#1507.
+                                n_max_text_ctx: if settings.whisper_anti_hallucination {
+                                    Some(128)
+                                } else {
+                                    None
+                                },
+                                entropy_thold: if settings.whisper_anti_hallucination {
+                                    Some(2.8)
+                                } else {
+                                    None
+                                },
                                 ..Default::default()
                             };
 
@@ -753,6 +767,185 @@ impl TranscriptionManager {
 
         Ok(final_result)
     }
+
+    /// VAD-based long-form transcription: splits long audio into chunks at silence
+    /// boundaries and transcribes each. Needed for non-Whisper engines which have
+    /// fixed max input length (typically 20-40s) and would fail with ONNX shape
+    /// errors on multi-minute audio.
+    ///
+    /// For Whisper engines this delegates to `transcribe()` since whisper.cpp
+    /// already handles long audio via internal 30-second sliding windows.
+    pub fn transcribe_long_form(
+        &self,
+        audio: Vec<f32>,
+        cfg: LongFormConfig,
+    ) -> Result<LongFormResult> {
+        use transcribe_rs::transcriber::{Transcriber, VadChunked, VadChunkedConfig};
+        use transcribe_rs::vad::{EnergyVad, SmoothedVad};
+
+        self.touch_activity();
+        let st = std::time::Instant::now();
+
+        if audio.is_empty() {
+            return Ok(LongFormResult { text: String::new(), chunk_count: 0 });
+        }
+
+        // Wait for in-progress load, mirror transcribe()'s approach.
+        {
+            let mut il = self.is_loading.lock().unwrap();
+            while *il {
+                il = self.loading_condvar.wait(il).unwrap();
+            }
+        }
+
+        // Whisper short-circuit: handles long audio natively, no chunking needed.
+        let current_id = self.current_model_id.lock().unwrap().clone();
+        let is_whisper = current_id
+            .as_deref()
+            .and_then(|id| self.model_manager.get_model_info(id))
+            .map(|info| matches!(info.engine_type, EngineType::Whisper))
+            .unwrap_or(false);
+        if is_whisper {
+            let text = self.transcribe(audio)?;
+            return Ok(LongFormResult { text, chunk_count: 1 });
+        }
+
+        let mut engine_guard = self.lock_engine();
+        let mut engine = match engine_guard.take() {
+            Some(e) => e,
+            None => return Err(anyhow::anyhow!("Model is not loaded for long-form transcription.")),
+        };
+        drop(engine_guard);
+
+        // Build VAD (energy-based, 30ms frames, smoothed). No ML model needed.
+        let vad = SmoothedVad::new(Box::new(EnergyVad::new(480, 0.01)), 15, 15, 2);
+        let vad_cfg = VadChunkedConfig {
+            min_chunk_secs: cfg.min_chunk_secs,
+            max_chunk_secs: cfg.max_chunk_secs,
+            padding_secs: cfg.padding_secs,
+            smart_split_search_secs: cfg.smart_split_search_secs,
+            merge_separator: " ".into(),
+        };
+
+        // Build TranscribeOptions from settings — mirrors transcribe()'s
+        // per-engine branches. Most critically, `language` for Canary/Cohere
+        // (otherwise they default to English and ignore selected_language).
+        let settings = get_settings(&self.app_handle);
+        let lang_setting = settings.selected_language.clone();
+        let lang_opt = if lang_setting == "auto" {
+            None
+        } else if lang_setting == "zh-Hans" || lang_setting == "zh-Hant" {
+            Some("zh".to_string())
+        } else {
+            Some(lang_setting)
+        };
+        let opts = TranscribeOptions {
+            language: lang_opt,
+            translate: settings.translate_to_english,
+            ..Default::default()
+        };
+        info!(
+            "Long-form transcribe options: language={:?}, translate={}",
+            opts.language, opts.translate
+        );
+        let mut chunker = VadChunked::new(Box::new(vad), vad_cfg, opts);
+
+        let result = catch_unwind(AssertUnwindSafe(|| -> Result<LongFormResult> {
+            let model: &mut dyn SpeechModel = match &mut engine {
+                LoadedEngine::Whisper(m) => m,
+                LoadedEngine::Parakeet(m) => m,
+                LoadedEngine::Moonshine(m) => m,
+                LoadedEngine::MoonshineStreaming(m) => m,
+                LoadedEngine::SenseVoice(m) => m,
+                LoadedEngine::GigaAM(m) => m,
+                LoadedEngine::Canary(m) => m,
+                LoadedEngine::Cohere(m) => m,
+            };
+
+            let partials = chunker
+                .feed(model, &audio)
+                .map_err(|e| anyhow::anyhow!("VAD chunker feed failed: {}", e))?;
+            let finale = chunker
+                .finish(model)
+                .map_err(|e| anyhow::anyhow!("VAD chunker finish failed: {}", e))?;
+
+            let mut parts: Vec<String> = partials
+                .into_iter()
+                .map(|p| p.text.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            let tail = finale.text.trim().to_string();
+            let chunk_count = parts.len() as u32 + if tail.is_empty() { 0 } else { 1 };
+            if !tail.is_empty() {
+                parts.push(tail);
+            }
+            let text = parts.join(" ");
+            Ok(LongFormResult { text, chunk_count })
+        }));
+
+        match result {
+            Ok(inner) => {
+                *self.lock_engine() = Some(engine);
+                let res = inner?;
+                info!(
+                    "Long-form transcription completed in {}ms, {} chunks",
+                    st.elapsed().as_millis(),
+                    res.chunk_count
+                );
+                self.maybe_unload_immediately("long-form transcription");
+                Ok(res)
+            }
+            Err(panic_payload) => {
+                let msg = if let Some(s) = panic_payload.downcast_ref::<&str>() {
+                    s.to_string()
+                } else if let Some(s) = panic_payload.downcast_ref::<String>() {
+                    s.clone()
+                } else {
+                    "unknown panic".to_string()
+                };
+                error!("Long-form transcription engine panicked: {}", msg);
+                {
+                    let mut current = self.current_model_id.lock().unwrap_or_else(|e| e.into_inner());
+                    *current = None;
+                }
+                let _ = self.app_handle.emit(
+                    "model-state-changed",
+                    ModelStateEvent {
+                        event_type: "unloaded".to_string(),
+                        model_id: None,
+                        model_name: None,
+                        error: Some(format!("Engine panicked: {}", msg)),
+                    },
+                );
+                Err(anyhow::anyhow!("Long-form engine panic: {}", msg))
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct LongFormConfig {
+    pub max_chunk_secs: f32,
+    pub min_chunk_secs: f32,
+    pub padding_secs: f32,
+    pub smart_split_search_secs: Option<f32>,
+}
+
+impl Default for LongFormConfig {
+    fn default() -> Self {
+        Self {
+            max_chunk_secs: 20.0,
+            min_chunk_secs: 3.0,
+            padding_secs: 0.5,
+            smart_split_search_secs: Some(2.0),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct LongFormResult {
+    pub text: String,
+    pub chunk_count: u32,
 }
 
 /// Apply the user's accelerator preferences to the transcribe-rs global atomics.

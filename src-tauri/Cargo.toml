@@ -112,6 +112,9 @@ transcribe-rs = { version = "0.3.3", features = ["whisper-vulkan"] }
 tauri-runtime = { git = "https://github.com/cjpais/tauri.git", branch = "handy-2.10.2" }
 tauri-runtime-wry = { git = "https://github.com/cjpais/tauri.git", branch = "handy-2.10.2" }
 tauri-utils = { git = "https://github.com/cjpais/tauri.git", branch = "handy-2.10.2" }
+# Local fork adding n_max_text_ctx and entropy_thold to WhisperInferenceParams
+# for anti-hallucination protection (OpenWhispr PR #552 equivalent).
+transcribe-rs = { path = "../../transcribe-rs-fork" }
 
 [dev-dependencies]
 tempfile = "3"
