@@ -289,3 +289,64 @@ Based on the behavioral arc of this session, user will likely want to:
 - Implement Tier 2 UI (Settings dropdown for LID modes) — explicitly out-of-scope per user spec.
 - Push any fork to external remotes without user confirmation.
 - Force-push or rewrite history on the Handy branch.
+
+## Backlog — rigorous parameter-provenance verification
+
+**Context:** current `BenchmarkRunRecord` JSON records settings-layer values (what we wrote into the store before calling `transcribe()`). This matches what `transcription.rs:487 get_settings(...)` reads because benchmark.rs is single-threaded. But the chain settings → WhisperInferenceParams → FullParams → C FFI → whisper.cpp has three silent-transform points that the JSON does not prove:
+
+1. **Resolution gap (`whisper_sot_lang_tokens` codes → token IDs):** in `transcription.rs:592-602`, codes that fail `ctx_lang_token_id()` are silently `filter_map`'d out. JSON shows the input strings; if any code didn't resolve, the actual FFI input was shorter or `None`. Benign for `ru`/`en` (always resolve in multilingual Whisper vocab), but a footgun for future experiments (`"zh"`, `"yue"`, typos).
+2. **`transcription_prompt` ≠ actual `initial_prompt`:** the record stores the raw prompt field, not the concatenation `custom_words.join(", ") + "\n\n" + transcription_prompt`. benchmark.rs clears `custom_words = vec![]` on L744/L751, but this is an unchecked invariant: if it ever regresses, JSON would silently under-report.
+3. **`use_anti_halluc` boolean, not applied thresholds:** JSON records `ah: true/false` but the actual `n_max_text_ctx=128`, `entropy_thold=2.8` values are hardcoded in `transcription.rs:577-586`. If those constants change (e.g. someone tunes to 256/3.0) the JSON won't reflect it.
+
+### What to build (in order)
+
+**B1 — C++ stderr log of prompt_init** (lowest level, smoking-gun evidence):
+- In `whisper-rs-sys-fork/whisper.cpp/src/whisper.cpp:6954-6974` (primary SOT path, already patched), add a `WHISPER_LOG_INFO` after `prompt_init` is fully assembled, printing its length and the numeric tokens. Something like:
+  ```cpp
+  WHISPER_LOG_INFO("%s: prompt_init (%d tokens):", __func__, (int)prompt_init.size());
+  for (size_t i = 0; i < prompt_init.size(); ++i) {
+      WHISPER_LOG_INFO(" %d", prompt_init[i]);
+  }
+  ```
+  Not just on the LID path — unconditional, so even baseline runs log their prompt_init (which proves zero-regression too). Commit on `feature/sot-lang-tokens` branch of whisper-rs-sys-fork.
+- This appears in Handy's tauri dev stderr. We can grep the log file to verify per-run what tokens went to the decoder.
+
+**B2 — Structured prompt_init capture into BenchmarkRunRecord:**
+- This is more work: need a way for Rust to READ OUT the tokens that whisper.cpp actually received. Two options:
+  - (a) Add a new FFI getter `whisper_get_last_prompt_init(ctx, out_tokens, out_count)` that returns the prompt_init from the last `whisper_full()` call. Requires whisper.cpp to store it on the ctx (new member) and expose it. Bigger change.
+  - (b) Capture the stderr from B1 and parse it out-of-band. Ugly but doesn't require a new FFI.
+  - (c) Do the check ONLY in debug_assertions: stash the expected token sequence on the Rust side before calling `state.full()` and assert inside a test. Doesn't solve "is this the same thing the decoder saw" — that requires (a).
+- Recommend (a). Add new fields to `BenchmarkRunRecord`:
+  ```rust
+  /// Token IDs actually submitted to the decoder's prompt_init (vs sot_lang_tokens
+  /// which is the settings-layer codes). Lets us verify the FFI received what we
+  /// intended without relying on log parsing. None = not captured (e.g. non-Whisper
+  /// engine, or captured-via-FFI failed).
+  decoder_prompt_init_tokens: Option<Vec<i32>>,
+  /// Effective initial_prompt string as built by transcription.rs (custom_words +
+  /// transcription_prompt concatenation), so the record reflects what whisper.cpp
+  /// actually saw, not just the raw settings field.
+  effective_initial_prompt: Option<String>,
+  /// Effective anti-halluc thresholds as applied. None = not set. Records the
+  /// numeric values to survive future changes to the hardcoded 128/2.8 defaults.
+  effective_n_max_text_ctx: Option<i32>,
+  effective_entropy_thold: Option<f32>,
+  ```
+- Requires wiring through transcribe-rs (return the effective params alongside the text) or just computing them in benchmark.rs before/after transcribe.
+
+**B3 — Integrity invariant check in benchmark.rs:**
+- After each transcribe() call, compare the `applied_*` snapshot (what we wrote) to the `effective_*` / `decoder_prompt_init_tokens` (what actually ran). Log a warning (or fail the record) if they diverge. Catches silent regressions in the chain without requiring a full re-run.
+
+**B4 — Fidelity test:**
+- Unit test in `transcribe-rs-fork` that constructs known-good token IDs, sets them via `set_sot_lang_tokens`, runs a tiny mock transcription, and inspects the resulting prompt_init via B2's FFI getter. Guards the chain from silent layer-shuffle regressions.
+
+### Priority
+
+- **B1 first** (smallest diff, biggest evidence payoff): ~15 lines of C++, one commit on whisper-rs-sys-fork feature branch, rebuild. Ready for visual verification via logs on the next experiment.
+- **B2 (a)** when rigor matters (e.g. publishing results, champion-candidate evaluation): ~50 lines across 4 crates.
+- **B3** after B2: ~20 lines in benchmark.rs.
+- **B4** before merging the LID-hack feature branch: ~30 lines of test code.
+
+### Rationale for not doing this inline this session
+
+User explicitly asked for runtime variance experiments, not chain-hardening. Current empirical evidence (Stage 1 latency spike + variance determinism asymmetry + token-choice flip) is strong indirect proof that the patches reach the decoder for the specific codes (`ru`, `en`) under test. B1 is the cheapest way to upgrade from "strong indirect" to "observed directly" and should be done before expanding to exotic code sets (`zh`, rare languages) where silent resolution failures become plausible.
