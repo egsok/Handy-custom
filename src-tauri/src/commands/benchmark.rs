@@ -48,6 +48,11 @@ const RUN_MATRIX: &[RunSpec] = &[
     RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: None },
     RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
     RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: None },
+    // LID-hack sweep: Peng-style concatenated SOT language tokens. Order matters
+    // (first token biases whisper's language head most), so we measure both
+    // permutations and keep prompt/anti-halluc off to isolate the effect.
+    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: Some(&["ru", "en"]) },
+    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: Some(&["en", "ru"]) },
     // antony66/whisper-large-v3-russian (via Limtech's GGML conversion) — custom Whisper model
     RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
     RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: None },
