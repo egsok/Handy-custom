@@ -7,7 +7,7 @@ use chrono::Local;
 use hound::{SampleFormat, WavReader};
 use log::info;
 use rubato::{FftFixedIn, Resampler};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -22,50 +22,51 @@ struct RunSpec {
     engine_label: &'static str,
     use_prompt: bool,
     use_anti_halluc: bool,
+    sot_lang_tokens: Option<&'static [&'static str]>,
 }
 
 const RUN_MATRIX: &[RunSpec] = &[
     // Whisper-based: 4 conditions per model = (prompt × anti_halluc)
-    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: false, use_anti_halluc: false },
-    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false },
-    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: false, use_anti_halluc: true  },
-    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true  },
-    RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: false },
-    RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false },
-    RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: true  },
-    RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true  },
-    RunSpec { model_id: "large", engine_label: "whisper", use_prompt: false, use_anti_halluc: false },
-    RunSpec { model_id: "large", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false },
-    RunSpec { model_id: "large", engine_label: "whisper", use_prompt: false, use_anti_halluc: true  },
-    RunSpec { model_id: "large", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true  },
-    RunSpec { model_id: "medium", engine_label: "whisper", use_prompt: false, use_anti_halluc: false },
-    RunSpec { model_id: "medium", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false },
-    RunSpec { model_id: "medium", engine_label: "whisper", use_prompt: false, use_anti_halluc: true  },
-    RunSpec { model_id: "medium", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true  },
+    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
+    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: None },
+    RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
+    RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: None },
+    RunSpec { model_id: "large", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "large", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "large", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
+    RunSpec { model_id: "large", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: None },
+    RunSpec { model_id: "medium", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "medium", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "medium", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
+    RunSpec { model_id: "medium", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: None },
     // bond005/whisper-podlodka-turbo — custom Whisper model auto-discovered from models/ dir
-    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: false },
-    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false },
-    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: true  },
-    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true  },
+    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
+    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: None },
     // antony66/whisper-large-v3-russian (via Limtech's GGML conversion) — custom Whisper model
-    RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: false, use_anti_halluc: false },
-    RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false },
-    RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: false, use_anti_halluc: true  },
-    RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true  },
+    RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
+    RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: None },
     // Standard OpenAI Whisper large-v3 f16 (unquantized) from ggerganov/whisper.cpp
-    RunSpec { model_id: "ggml-large-v3", engine_label: "whisper", use_prompt: false, use_anti_halluc: false },
-    RunSpec { model_id: "ggml-large-v3", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false },
-    RunSpec { model_id: "ggml-large-v3", engine_label: "whisper", use_prompt: false, use_anti_halluc: true  },
-    RunSpec { model_id: "ggml-large-v3", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true  },
+    RunSpec { model_id: "ggml-large-v3", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "ggml-large-v3", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "ggml-large-v3", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
+    RunSpec { model_id: "ggml-large-v3", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: None },
     // Standard OpenAI Whisper medium f16 (unquantized) from ggerganov/whisper.cpp
-    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: false, use_anti_halluc: false },
-    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false },
-    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: false, use_anti_halluc: true  },
-    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true  },
+    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
+    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: None },
     // Non-Whisper: один condition на модель — prompt им не нужен, anti_halluc не действует
-    RunSpec { model_id: "parakeet-tdt-0.6b-v3", engine_label: "parakeet", use_prompt: false, use_anti_halluc: false },
-    RunSpec { model_id: "canary-1b-v2", engine_label: "canary", use_prompt: false, use_anti_halluc: false },
-    RunSpec { model_id: "gigaam-v3-e2e-ctc", engine_label: "gigaam", use_prompt: false, use_anti_halluc: false },
+    RunSpec { model_id: "parakeet-tdt-0.6b-v3", engine_label: "parakeet", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "canary-1b-v2", engine_label: "canary", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "gigaam-v3-e2e-ctc", engine_label: "gigaam", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
 ];
 
 /// Per-model maximum chunk duration for VAD-based long-form transcription
@@ -98,6 +99,7 @@ pub struct BenchmarkRunRecord {
     error: Option<String>,
     chunk_count: u32,
     max_chunk_secs: Option<f32>,
+    sot_lang_tokens: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Type)]
@@ -115,6 +117,27 @@ pub struct BenchmarkAggregate {
     rtf_median: Option<f64>,
     texts_identical: bool,
     first_error: Option<String>,
+}
+
+/// Bundle of optional overrides threaded into a single benchmark invocation.
+/// These apply on top of (or instead of) the per-spec values in RUN_MATRIX.
+///
+/// Grouped into a struct because tauri/specta caps command signatures at
+/// ten parameters; collecting overrides here keeps the door open for more
+/// toggles without another refactor.
+#[derive(Deserialize, Serialize, Type, Debug, Default, Clone)]
+pub struct BenchmarkOverrides {
+    /// When Some, overrides settings.transcription_prompt for runs where
+    /// RunSpec::use_prompt is true. Custom words are cleared so the test
+    /// isolates the overridden prompt.
+    pub prompt: Option<String>,
+    /// Skip RUN_MATRIX entries with use_prompt == false. Useful for a quick
+    /// "prompt only" sweep.
+    pub skip_no_prompt: Option<bool>,
+    /// When Some, overrides RunSpec::sot_lang_tokens for every row. Lets a
+    /// DevTools caller flip the Peng-style LID hack on/off for a full matrix
+    /// pass without editing the constant.
+    pub sot_lang_tokens: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Type)]
@@ -515,16 +538,18 @@ pub async fn benchmark_transcription_file(
     skip_models: Option<Vec<String>>,
     max_chunk_secs_override: Option<f32>,
     language: Option<String>,
-    prompt_override: Option<String>,
-    skip_no_prompt: Option<bool>,
+    overrides: Option<BenchmarkOverrides>,
 ) -> Result<String, String> {
+    let overrides = overrides.unwrap_or_default();
+    let prompt_override = overrides.prompt.clone();
+    let skip_no_prompt = overrides.skip_no_prompt.unwrap_or(false);
+    let sot_lang_tokens_override = overrides.sot_lang_tokens.clone();
     let runs_per_condition = runs_per_condition.unwrap_or(3).max(1);
     let skip_set: std::collections::HashSet<String> = skip_models
         .unwrap_or_default()
         .into_iter()
         .collect();
     let language = language.unwrap_or_else(|| "ru".to_string());
-    let skip_no_prompt = skip_no_prompt.unwrap_or(false);
 
     let input_path = PathBuf::from(&file_path);
     if !input_path.exists() {
@@ -537,7 +562,7 @@ pub async fn benchmark_transcription_file(
         .unwrap_or_else(|| PathBuf::from("."));
 
     info!(
-        "benchmark: starting — input={} warmup={:?} runs={} skip={:?} max_chunk_override={:?} language={} prompt_override={} skip_no_prompt={}",
+        "benchmark: starting — input={} warmup={:?} runs={} skip={:?} max_chunk_override={:?} language={} prompt_override={} skip_no_prompt={} sot_lang_tokens_override={:?}",
         file_path,
         warmup_path,
         runs_per_condition,
@@ -548,7 +573,8 @@ pub async fn benchmark_transcription_file(
             .as_ref()
             .map(|p| format!("{}…{} chars", &p.chars().take(40).collect::<String>(), p.chars().count()))
             .unwrap_or_else(|| "none".to_string()),
-        skip_no_prompt
+        skip_no_prompt,
+        sot_lang_tokens_override,
     );
 
     let audio_benchmark = load_wav_mono_16k(&input_path).map_err(|e| e.to_string())?;
@@ -641,6 +667,7 @@ pub async fn benchmark_transcription_file(
                     error: Some("model not downloaded".to_string()),
                     chunk_count: 0,
                     max_chunk_secs,
+                    sot_lang_tokens: None,
                 });
             }
             continue;
@@ -667,6 +694,7 @@ pub async fn benchmark_transcription_file(
                         error: Some(format!("switch_active_model failed: {}", e)),
                         chunk_count: 0,
                         max_chunk_secs,
+                        sot_lang_tokens: None,
                     });
                 }
                 continue;
@@ -716,10 +744,19 @@ pub async fn benchmark_transcription_file(
         // Whisper-based engine (for non-Whisper the flag is ignored anyway,
         // but we keep settings clean).
         s.whisper_anti_hallucination = is_whisper && spec.use_anti_halluc;
+        // LID-hack: per-run override takes precedence over the spec, so a
+        // DevTools invocation can flip sot_lang_tokens on/off for an entire
+        // RUN_MATRIX pass without editing the constant. When both are None
+        // the existing SettingsGuard Drop still restores the pre-benchmark
+        // value, so there's no permanent setting mutation.
+        s.whisper_sot_lang_tokens = sot_lang_tokens_override
+            .clone()
+            .or_else(|| spec.sot_lang_tokens.map(|a| a.iter().map(|s| s.to_string()).collect()));
         write_settings(&app, s.clone());
 
         let applied_prompt = s.transcription_prompt.clone();
         let applied_custom_words = s.custom_words.clone();
+        let applied_sot_lang_tokens = s.whisper_sot_lang_tokens.clone();
 
         for run_idx in 0..runs_per_condition {
             info!(
@@ -769,6 +806,7 @@ pub async fn benchmark_transcription_file(
                     error: None,
                     chunk_count: chunks,
                     max_chunk_secs,
+                    sot_lang_tokens: applied_sot_lang_tokens.clone(),
                 },
                 Err(e) => BenchmarkRunRecord {
                     model_id: spec.model_id.to_string(),
@@ -787,6 +825,7 @@ pub async fn benchmark_transcription_file(
                     error: Some(e.to_string()),
                     chunk_count: chunks,
                     max_chunk_secs,
+                    sot_lang_tokens: applied_sot_lang_tokens.clone(),
                 },
             };
             runs.push(record);
