@@ -115,6 +115,9 @@ tauri-utils = { git = "https://github.com/cjpais/tauri.git", branch = "handy-2.1
 # Local fork adding n_max_text_ctx and entropy_thold to WhisperInferenceParams
 # for anti-hallucination protection (OpenWhispr PR #552 equivalent).
 transcribe-rs = { path = "../../transcribe-rs-fork" }
+# Local LID-hack forks — see whisper-rs-sys-fork/feature/sot-lang-tokens.
+whisper-rs = { path = "../../whisper-rs-fork" }
+whisper-rs-sys = { path = "../../whisper-rs-sys-fork" }
 
 [dev-dependencies]
 tempfile = "3"
