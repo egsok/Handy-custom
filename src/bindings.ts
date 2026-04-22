@@ -845,7 +845,32 @@ export type AppSettings = { bindings: Partial<{ [key in string]: ShortcutBinding
 export type AudioDevice = { index: string; name: string; is_default: boolean }
 export type AutoSubmitKey = "enter" | "ctrl_enter" | "cmd_enter"
 export type AvailableAccelerators = { whisper: string[]; ort: string[]; gpu_devices: GpuDeviceOption[] }
-export type BenchmarkOverrides = { prompt?: string | null; skip_no_prompt?: boolean | null; sot_lang_tokens?: string[] | null }
+/**
+ * Bundle of optional overrides threaded into a single benchmark invocation.
+ * These apply on top of (or instead of) the per-spec values in RUN_MATRIX.
+ * 
+ * Grouped into a struct because tauri/specta caps command signatures at
+ * ten parameters; collecting overrides here keeps the door open for more
+ * toggles without another refactor.
+ */
+export type BenchmarkOverrides = { 
+/**
+ * When Some, overrides settings.transcription_prompt for runs where
+ * RunSpec::use_prompt is true. Custom words are cleared so the test
+ * isolates the overridden prompt.
+ */
+prompt: string | null; 
+/**
+ * Skip RUN_MATRIX entries with use_prompt == false. Useful for a quick
+ * "prompt only" sweep.
+ */
+skip_no_prompt: boolean | null; 
+/**
+ * When Some, overrides RunSpec::sot_lang_tokens for every row. Lets a
+ * DevTools caller flip the Peng-style LID hack on/off for a full matrix
+ * pass without editing the constant.
+ */
+sot_lang_tokens: string[] | null }
 export type BindingResponse = { success: boolean; binding: ShortcutBinding | null; error: string | null }
 export type ClipboardHandling = "dont_modify" | "copy_to_clipboard"
 export type CustomSounds = { start: boolean; stop: boolean }
