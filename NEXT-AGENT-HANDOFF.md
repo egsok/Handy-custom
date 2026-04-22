@@ -106,24 +106,28 @@ breeze-asr block has 4 rows: `noprompt+ah` × {`None`, `["ru"]`, `["en","ru"]`, 
 
 **BUT** the currently-running tauri dev binary is built against commit `63067ad` (previous matrix with 6 breeze rows = 3 noprompt+ah LID + 3 promptv2+ah LID). Hot-reload didn't finish before user pasted. See "In-flight experiment" below.
 
-## In-flight experiment (as of this handoff)
+## Group 1 results (FINISHED — actuals, not estimates)
 
-**Running:** Group 1 probe via DevTools snippet (see below for the snippet they pasted). Processing sp1 first (`Voice to text benchmark.wav`), then sp2 (`ASR benchmark Nastya.wav`). Uses `runsPerCondition: 5`, `skipModels` = all-but-breeze, `overrides: {}`.
+**Reports** (in `C:/Users/Egor Sokolov/Documents/REAPER Media/`):
+- `benchmark-results-20260422-204039.{json,md}` — sp1, 30 runs
+- `benchmark-results-20260422-210338.{json,md}` — sp2, 30 runs
 
-**What's ACTUALLY running** (stale-matrix state, 6 breeze rows × 5 runs):
-- 3 × `up=F, ah=T, sot=["ru"]` × 5 = 15 per speaker
-- 3 × `up=F, ah=T, sot=["en","ru"]` × 5 = 15 per speaker
-- 3 × `up=F, ah=T, sot=["ru","en"]` × 5 = 15 per speaker
-- 3 × `up=T, ah=T, sot=["ru"]` × 5 = 15 per speaker (bonus V2+lid_ru — note: override doesn't set prompt so V2 rows get no prompt actually, so this is effectively noprompt+ah+lid_ru again)
-- Similar for other promptv2+ah+LID rows
+**Matrix used**: commit `63067ad` (the PRE-`0403ad8` surgery — 6 breeze rows: 3 noprompt+ah LID + 3 promptv2+ah LID, NO `None` baseline). Hot-reload didn't catch `0403ad8` before user pasted.
 
-Wait — let me re-verify. The 6-row matrix at 63067ad has rows with use_prompt=true for 3 of them. When user's snippet uses `overrides: {}`, the use_prompt=true rows get a prompt from `original_settings.transcription_prompt` which is whatever the UI has set (likely None). So those rows effectively run with no prompt despite use_prompt=true — giving ADDITIONAL noprompt-like data for those LID modes.
+**Critical surprise**: user has **V2 prompt set in the Handy UI** (`transcription_prompt` settings field). The DevTools snippet used `overrides: {}` (no prompt override), so use_prompt=true rows fell back to `original_settings.transcription_prompt` = V2 string. Verified by inspecting JSON record `transcription_prompt` field.
 
-Net effect: 30 per speaker = 15 "pure noprompt+ah × 3 LID × 5" + 15 "use_prompt=true-but-empty-prompt × 3 LID × 5". The second half is essentially equivalent to noprompt (except for the settings mutation side-effects).
+**Actual data breakdown** (60 transcripts total):
 
-**Missing from this run**: baseline `None` LID data for noprompt+ah (not in the stale matrix).
+| Slice | Count | Maps to Group 1 spec? |
+|---|---:|---|
+| noprompt+ah × 3 LID × 5 runs × 2 speakers | 30 | ✅ matches "Group 1 noprompt+ah variance" (3 of 4 LID modes) |
+| **noprompt+ah × `None` LID × 5 × 2** | **0** | ❌ MISSING — needed for full Group 1 spec |
+| V2+ah × 3 LID × 5 × 2 (bonus, accidental) | 30 | 🎁 useful contextual data, but NOT Group 2 Phase B (Phase B is V2+**noah**) |
 
-**DO NOT** commit to `src-tauri/` while this is running. File-watch hot-reload will restart the binary and crash the invocation mid-flight.
+**Implications for next agent**:
+1. To complete Group 1 cleanly, run a single-row matrix surgery (just `breeze noprompt+ah None`) + invocation × 5 × 2 = 10 transcripts to fill the missing baseline. OR accept that the 30 noprompt+ah hack rows include enough determinism evidence to compute baseline indirectly from prior validation reports.
+2. The 30 bonus V2+ah+LID rows are NOT a substitute for Group 2 Phase B (V2+noah+LID). Phase B still needs to be run.
+3. **Tell the user to clear the UI prompt field** before running future invocations that pass `overrides: {}`, or always pass `overrides: { prompt: '' }` explicitly to neutralize.
 
 ## Outstanding work
 
