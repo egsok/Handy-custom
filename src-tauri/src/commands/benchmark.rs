@@ -125,6 +125,14 @@ pub struct BenchmarkRunRecord {
     /// run. `Some(ANTI_HALLUC_ENTROPY_THOLD)` when anti-halluc is on, None
     /// otherwise.
     effective_entropy_thold: Option<f32>,
+    /// SOT `prompt_init` token IDs the decoder actually received, read back
+    /// from whisper.cpp state via `whisper_get_last_prompt_init`. For LID-hack
+    /// rows the sequence is
+    /// `[<|startoftranscript|>, <|lang_a|>, <|lang_b|>, ..., <|transcribe|>, <|notimestamps|>]`;
+    /// for baseline rows it's `[<|sot|>, <|auto-lang|>, <|transcribe|>, <|notimestamps|>]`.
+    /// None when the engine is non-whisper, transcribe crashed before
+    /// whisper.cpp assembled prompt_init, or the getter returned empty.
+    decoder_prompt_init_tokens: Option<Vec<i32>>,
 }
 
 #[derive(Serialize, Type)]
@@ -718,6 +726,7 @@ pub async fn benchmark_transcription_file(
                     effective_initial_prompt: None,
                     effective_n_max_text_ctx: None,
                     effective_entropy_thold: None,
+                    decoder_prompt_init_tokens: None,
                 });
             }
             continue;
@@ -748,6 +757,7 @@ pub async fn benchmark_transcription_file(
                         effective_initial_prompt: None,
                         effective_n_max_text_ctx: None,
                         effective_entropy_thold: None,
+                        decoder_prompt_init_tokens: None,
                     });
                 }
                 continue;
@@ -851,6 +861,11 @@ pub async fn benchmark_transcription_file(
             };
             let elapsed_ms = start.elapsed().as_millis() as u64;
 
+            // Pull the SOT prompt_init tokens captured by TranscriptionManager
+            // from the decoder's state (LID-hack provenance). Consuming take:
+            // each run owns its snapshot; next iteration re-captures or clears.
+            let decoder_prompt_init_tokens = transcription_manager.take_last_whisper_prompt_init();
+
             let record = match text_result {
                 Ok(text) => BenchmarkRunRecord {
                     model_id: spec.model_id.to_string(),
@@ -877,6 +892,7 @@ pub async fn benchmark_transcription_file(
                     effective_initial_prompt: effective_initial_prompt.clone(),
                     effective_n_max_text_ctx,
                     effective_entropy_thold,
+                    decoder_prompt_init_tokens: decoder_prompt_init_tokens.clone(),
                 },
                 Err(e) => BenchmarkRunRecord {
                     model_id: spec.model_id.to_string(),
@@ -899,6 +915,7 @@ pub async fn benchmark_transcription_file(
                     effective_initial_prompt: effective_initial_prompt.clone(),
                     effective_n_max_text_ctx,
                     effective_entropy_thold,
+                    decoder_prompt_init_tokens,
                 },
             };
             runs.push(record);

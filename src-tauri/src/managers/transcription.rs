@@ -80,6 +80,12 @@ pub struct TranscriptionManager {
     watcher_handle: Arc<Mutex<Option<thread::JoinHandle<()>>>>,
     is_loading: Arc<Mutex<bool>>,
     loading_condvar: Arc<Condvar>,
+    /// SOT prompt_init tokens captured from the most recent Whisper transcribe
+    /// call (populated via `WhisperEngine::last_prompt_init`). Cleared on
+    /// non-Whisper transcriptions. Used only by the benchmark harness for
+    /// LID-hack provenance verification; the normal transcribe path never
+    /// reads it.
+    last_whisper_prompt_init: Arc<Mutex<Option<Vec<i32>>>>,
 }
 
 impl TranscriptionManager {
@@ -94,6 +100,7 @@ impl TranscriptionManager {
             watcher_handle: Arc::new(Mutex::new(None)),
             is_loading: Arc::new(Mutex::new(false)),
             loading_condvar: Arc::new(Condvar::new()),
+            last_whisper_prompt_init: Arc::new(Mutex::new(None)),
         };
 
         // Start the idle watcher
@@ -444,6 +451,17 @@ impl TranscriptionManager {
         current_model.clone()
     }
 
+    /// Consume and return the SOT `prompt_init` tokens captured during the
+    /// most recent Whisper transcribe call. Returns None for non-Whisper
+    /// engines or when no transcribe has been invoked yet.
+    ///
+    /// Used only by `commands::benchmark` for LID-hack provenance. Consuming
+    /// semantics (value is `take`n) avoid accidental stale reads when the
+    /// benchmark loop switches between Whisper and non-Whisper models.
+    pub fn take_last_whisper_prompt_init(&self) -> Option<Vec<i32>> {
+        self.last_whisper_prompt_init.lock().unwrap().take()
+    }
+
     pub fn transcribe(&self, audio: Vec<f32>) -> Result<String> {
         #[cfg(debug_assertions)]
         if std::env::var("HANDY_FORCE_TRANSCRIPTION_FAILURE").is_ok() {
@@ -541,6 +559,11 @@ impl TranscriptionManager {
             // Release the lock before transcribing — no mutex held during the engine call
             drop(engine_guard);
 
+            // Clear any stale LID-hack capture from the previous call. The
+            // Whisper arm below re-populates on success; any other engine
+            // (or an error before we get there) leaves this as None.
+            *self.last_whisper_prompt_init.lock().unwrap() = None;
+
             let transcribe_result = catch_unwind(AssertUnwindSafe(
                 || -> Result<transcribe_rs::TranscriptionResult> {
                     match &mut engine {
@@ -611,9 +634,19 @@ impl TranscriptionManager {
                                 ..Default::default()
                             };
 
-                            whisper_engine
+                            let result = whisper_engine
                                 .transcribe_with(&audio, &params)
-                                .map_err(|e| anyhow::anyhow!("Whisper transcription failed: {}", e))
+                                .map_err(|e| anyhow::anyhow!("Whisper transcription failed: {}", e));
+                            // LID-hack provenance: read back the SOT prompt_init
+                            // whisper.cpp actually used, so benchmark.rs can stamp
+                            // the record with decoder-layer evidence (not just the
+                            // settings-layer codes). Always capture — even on error
+                            // transcribe_with may have assembled prompt_init before
+                            // failing, which is useful diagnostic info.
+                            let tokens = whisper_engine.last_prompt_init();
+                            *self.last_whisper_prompt_init.lock().unwrap() =
+                                (!tokens.is_empty()).then_some(tokens);
+                            result
                         }
                         LoadedEngine::Parakeet(parakeet_engine) => {
                             let params = ParakeetParams {
@@ -813,6 +846,12 @@ impl TranscriptionManager {
         if audio.is_empty() {
             return Ok(LongFormResult { text: String::new(), chunk_count: 0 });
         }
+
+        // Non-Whisper long-form path never touches the Whisper engine, so make
+        // sure we don't leak a stale LID-hack capture from the previous whisper
+        // transcribe. The Whisper short-circuit below delegates to transcribe()
+        // which clears-and-captures again, so this is benign there.
+        *self.last_whisper_prompt_init.lock().unwrap() = None;
 
         // Wait for in-progress load, mirror transcribe()'s approach.
         {
