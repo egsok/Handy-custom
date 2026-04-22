@@ -31,6 +31,15 @@ const RUN_MATRIX: &[RunSpec] = &[
     RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: None },
     RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
     RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: None },
+    // breeze-asr LID-hack sweep: 3 modes × 2 (noprompt+ah, promptv2+ah) configs.
+    // ["ru"] tests single-token forcing vs auto-detect. ["en","ru"] / ["ru","en"]
+    // test code-switching (Peng-style concatenated tokens, order-sensitive).
+    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: Some(&["ru"]) },
+    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: Some(&["en", "ru"]) },
+    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: Some(&["ru", "en"]) },
+    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: Some(&["ru"]) },
+    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: Some(&["en", "ru"]) },
+    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: Some(&["ru", "en"]) },
     RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
     RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: None },
     RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
