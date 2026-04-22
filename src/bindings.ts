@@ -748,9 +748,9 @@ async unloadModelManually() : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-async benchmarkTranscriptionFile(filePath: string, warmupPath: string | null, outputDir: string | null, runsPerCondition: number | null, skipModels: string[] | null, maxChunkSecsOverride: number | null, language: string | null) : Promise<Result<string, string>> {
+async benchmarkTranscriptionFile(filePath: string, warmupPath: string | null, runsPerCondition: number | null, skipModels: string[] | null, maxChunkSecsOverride: number | null, language: string | null, promptOverride: string | null, skipNoPrompt: boolean | null) : Promise<Result<string, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("benchmark_transcription_file", { filePath, warmupPath, outputDir, runsPerCondition, skipModels, maxChunkSecsOverride, language }) };
+    return { status: "ok", data: await TAURI_INVOKE("benchmark_transcription_file", { filePath, warmupPath, runsPerCondition, skipModels, maxChunkSecsOverride, language, promptOverride, skipNoPrompt }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };

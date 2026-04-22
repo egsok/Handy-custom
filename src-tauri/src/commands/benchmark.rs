@@ -42,6 +42,26 @@ const RUN_MATRIX: &[RunSpec] = &[
     RunSpec { model_id: "medium", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false },
     RunSpec { model_id: "medium", engine_label: "whisper", use_prompt: false, use_anti_halluc: true  },
     RunSpec { model_id: "medium", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true  },
+    // bond005/whisper-podlodka-turbo — custom Whisper model auto-discovered from models/ dir
+    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: false },
+    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false },
+    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: true  },
+    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true  },
+    // antony66/whisper-large-v3-russian (via Limtech's GGML conversion) — custom Whisper model
+    RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: false, use_anti_halluc: false },
+    RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false },
+    RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: false, use_anti_halluc: true  },
+    RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true  },
+    // Standard OpenAI Whisper large-v3 f16 (unquantized) from ggerganov/whisper.cpp
+    RunSpec { model_id: "ggml-large-v3", engine_label: "whisper", use_prompt: false, use_anti_halluc: false },
+    RunSpec { model_id: "ggml-large-v3", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false },
+    RunSpec { model_id: "ggml-large-v3", engine_label: "whisper", use_prompt: false, use_anti_halluc: true  },
+    RunSpec { model_id: "ggml-large-v3", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true  },
+    // Standard OpenAI Whisper medium f16 (unquantized) from ggerganov/whisper.cpp
+    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: false, use_anti_halluc: false },
+    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false },
+    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: false, use_anti_halluc: true  },
+    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true  },
     // Non-Whisper: один condition на модель — prompt им не нужен, anti_halluc не действует
     RunSpec { model_id: "parakeet-tdt-0.6b-v3", engine_label: "parakeet", use_prompt: false, use_anti_halluc: false },
     RunSpec { model_id: "canary-1b-v2", engine_label: "canary", use_prompt: false, use_anti_halluc: false },
@@ -333,6 +353,35 @@ fn compute_aggregates(runs: &[BenchmarkRunRecord]) -> Vec<BenchmarkAggregate> {
     aggregates
 }
 
+/// Writes a partial JSON + MD snapshot to a fixed filename.
+/// Called after each model completes so a later crash does not lose earlier
+/// runs. Overwrites `benchmark-results-checkpoint.json/.md` every call.
+fn write_checkpoint(
+    output_dir: &Path,
+    file_path: &str,
+    warmup_path: &Option<String>,
+    audio_duration_s: f64,
+    runs_per_condition: u32,
+    runs: &[BenchmarkRunRecord],
+) -> Result<()> {
+    std::fs::create_dir_all(output_dir)?;
+    let aggregates = compute_aggregates(runs);
+    let report = BenchmarkReport {
+        timestamp: Local::now().to_rfc3339(),
+        input_file: file_path.to_string(),
+        warmup_file: warmup_path.clone(),
+        audio_duration_s,
+        runs_per_condition,
+        runs: runs.to_vec(),
+        aggregates,
+    };
+    let json_path = output_dir.join("benchmark-results-checkpoint.json");
+    let md_path = output_dir.join("benchmark-results-checkpoint.md");
+    std::fs::write(&json_path, serde_json::to_string_pretty(&report)?)?;
+    std::fs::write(&md_path, build_markdown(&report))?;
+    Ok(())
+}
+
 fn build_markdown(report: &BenchmarkReport) -> String {
     let mut md = String::new();
     md.push_str("# Transcription Benchmark\n\n");
@@ -459,15 +508,15 @@ fn build_markdown(report: &BenchmarkReport) -> String {
 #[specta::specta]
 pub async fn benchmark_transcription_file(
     app: AppHandle,
-    _transcription_manager: State<'_, Arc<TranscriptionManager>>,
     model_manager: State<'_, Arc<ModelManager>>,
     file_path: String,
     warmup_path: Option<String>,
-    output_dir: Option<String>,
     runs_per_condition: Option<u32>,
     skip_models: Option<Vec<String>>,
     max_chunk_secs_override: Option<f32>,
     language: Option<String>,
+    prompt_override: Option<String>,
+    skip_no_prompt: Option<bool>,
 ) -> Result<String, String> {
     let runs_per_condition = runs_per_condition.unwrap_or(3).max(1);
     let skip_set: std::collections::HashSet<String> = skip_models
@@ -475,23 +524,31 @@ pub async fn benchmark_transcription_file(
         .into_iter()
         .collect();
     let language = language.unwrap_or_else(|| "ru".to_string());
+    let skip_no_prompt = skip_no_prompt.unwrap_or(false);
 
     let input_path = PathBuf::from(&file_path);
     if !input_path.exists() {
         return Err(format!("Input file not found: {}", file_path));
     }
 
-    let output_dir_path = match output_dir {
-        Some(d) => PathBuf::from(d),
-        None => input_path
-            .parent()
-            .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| PathBuf::from(".")),
-    };
+    let output_dir_path = input_path
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."));
 
     info!(
-        "benchmark: starting — input={} warmup={:?} runs={} skip={:?} max_chunk_override={:?} language={}",
-        file_path, warmup_path, runs_per_condition, skip_set, max_chunk_secs_override, language
+        "benchmark: starting — input={} warmup={:?} runs={} skip={:?} max_chunk_override={:?} language={} prompt_override={} skip_no_prompt={}",
+        file_path,
+        warmup_path,
+        runs_per_condition,
+        skip_set,
+        max_chunk_secs_override,
+        language,
+        prompt_override
+            .as_ref()
+            .map(|p| format!("{}…{} chars", &p.chars().take(40).collect::<String>(), p.chars().count()))
+            .unwrap_or_else(|| "none".to_string()),
+        skip_no_prompt
     );
 
     let audio_benchmark = load_wav_mono_16k(&input_path).map_err(|e| e.to_string())?;
@@ -529,6 +586,13 @@ pub async fn benchmark_transcription_file(
     for spec in RUN_MATRIX {
         if skip_set.contains(spec.model_id) {
             info!("benchmark: skipping {} (in skip_models)", spec.model_id);
+            continue;
+        }
+        if skip_no_prompt && !spec.use_prompt {
+            info!(
+                "benchmark: skipping {} (use_prompt=false and skip_no_prompt is on)",
+                spec.model_id
+            );
             continue;
         }
 
@@ -634,8 +698,16 @@ pub async fn benchmark_transcription_file(
 
         let mut s = get_settings(&app);
         if is_whisper && spec.use_prompt {
-            s.transcription_prompt = original_settings.transcription_prompt.clone();
-            s.custom_words = original_settings.custom_words.clone();
+            // If prompt_override is provided, use it verbatim and clear
+            // custom_words so the test isolates the punctuation prompt.
+            // Otherwise fall back to whatever was in Handy's UI settings.
+            if let Some(ref p) = prompt_override {
+                s.transcription_prompt = Some(p.clone());
+                s.custom_words = vec![];
+            } else {
+                s.transcription_prompt = original_settings.transcription_prompt.clone();
+                s.custom_words = original_settings.custom_words.clone();
+            }
         } else {
             s.transcription_prompt = None;
             s.custom_words = vec![];
@@ -718,6 +790,16 @@ pub async fn benchmark_transcription_file(
                 },
             };
             runs.push(record);
+        }
+
+        // Checkpoint: write a partial JSON report after each model finishes so a
+        // subsequent crash (e.g. foreign C++ exception on the next model) does
+        // not lose already-collected data. We overwrite the same file per run
+        // so the final rename at the end makes it permanent.
+        if let Err(e) = write_checkpoint(&output_dir_path, &file_path, &warmup_path, audio_duration_s, runs_per_condition, &runs) {
+            log::warn!("benchmark: failed to write checkpoint after {}: {}", spec.model_id, e);
+        } else {
+            info!("benchmark: checkpoint written after model {}", spec.model_id);
         }
     }
 
