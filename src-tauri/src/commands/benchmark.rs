@@ -91,7 +91,7 @@ fn default_max_chunk_secs(model_id: &str) -> f32 {
     }
 }
 
-#[derive(Serialize, Type, Clone)]
+#[derive(Serialize, Deserialize, Type, Clone)]
 pub struct BenchmarkRunRecord {
     model_id: String,
     model_name: String,
@@ -133,7 +133,7 @@ pub struct BenchmarkRunRecord {
     decoder_prompt_init_tokens: Option<Vec<i32>>,
 }
 
-#[derive(Serialize, Type)]
+#[derive(Serialize, Deserialize, Type)]
 pub struct BenchmarkAggregate {
     model_id: String,
     model_name: String,
@@ -169,9 +169,15 @@ pub struct BenchmarkOverrides {
     /// DevTools caller flip the Peng-style LID hack on/off for a full matrix
     /// pass without editing the constant.
     pub sot_lang_tokens: Option<Vec<String>>,
+    /// Resume-from-checkpoint. When Some(path) AND the file exists and parses,
+    /// seed `runs` with the prior (non-errored) records and skip any matching
+    /// (model_id, use_prompt, use_anti_halluc, sot_lang_tokens, run_idx) tuples.
+    /// Missing or unreadable file → fresh start with a warning, not an error:
+    /// callers can pass the expected checkpoint path unconditionally.
+    pub resume_from: Option<String>,
 }
 
-#[derive(Serialize, Type)]
+#[derive(Serialize, Deserialize, Type)]
 pub struct BenchmarkReport {
     timestamp: String,
     input_file: String,
@@ -685,7 +691,64 @@ pub async fn benchmark_transcription_file(
 
     let transcription_manager = app.state::<Arc<TranscriptionManager>>();
 
-    let mut runs: Vec<BenchmarkRunRecord> = Vec::new();
+    // Resume-from-checkpoint: seed `runs` from a prior partial report (if
+    // overrides.resume_from was provided and points to a readable+parseable
+    // file). `completed_keys` holds the per-run tuples we should skip below.
+    // Errored runs from the prior report are dropped entirely so they retry.
+    // Missing/corrupt file → fresh start with a warning (caller-friendly).
+    let (completed_keys, mut runs): (
+        std::collections::HashSet<(String, bool, bool, Option<Vec<String>>, u32)>,
+        Vec<BenchmarkRunRecord>,
+    ) = match overrides.resume_from.as_deref() {
+        Some(path) if Path::new(path).exists() => {
+            match std::fs::read_to_string(path)
+                .map_err(|e| e.to_string())
+                .and_then(|s| {
+                    serde_json::from_str::<BenchmarkReport>(&s).map_err(|e| e.to_string())
+                }) {
+                Ok(prev) => {
+                    let total = prev.runs.len();
+                    let ok_runs: Vec<BenchmarkRunRecord> =
+                        prev.runs.into_iter().filter(|r| r.error.is_none()).collect();
+                    let errored = total - ok_runs.len();
+                    let keys: std::collections::HashSet<_> = ok_runs
+                        .iter()
+                        .map(|r| {
+                            (
+                                r.model_id.clone(),
+                                r.use_prompt,
+                                r.use_anti_halluc,
+                                r.sot_lang_tokens.clone(),
+                                r.run_idx,
+                            )
+                        })
+                        .collect();
+                    info!(
+                        "benchmark: resuming from {} ({} completed will skip, {} errored will retry)",
+                        path,
+                        keys.len(),
+                        errored
+                    );
+                    (keys, ok_runs)
+                }
+                Err(e) => {
+                    warn!(
+                        "benchmark: resume_from {} exists but failed to parse ({}) — starting fresh",
+                        path, e
+                    );
+                    (std::collections::HashSet::new(), Vec::new())
+                }
+            }
+        }
+        Some(path) => {
+            info!(
+                "benchmark: resume_from file not found ({}) — starting fresh",
+                path
+            );
+            (std::collections::HashSet::new(), Vec::new())
+        }
+        None => (std::collections::HashSet::new(), Vec::new()),
+    };
     let mut previous_model: Option<String> = None;
 
     for spec in RUN_MATRIX {
@@ -860,6 +923,30 @@ pub async fn benchmark_transcription_file(
             };
 
         for run_idx in 0..runs_per_condition {
+            // Resume short-circuit: if this (model_id, use_prompt, ah,
+            // sot_lang_tokens, run_idx) is in the seeded completed-set,
+            // skip. The seeded run is already in `runs` and flows into the
+            // final report unchanged. Warmup has already happened for this
+            // spec — wasteful only when all runs of a spec are already done,
+            // but that's a single model-load, acceptable overhead.
+            let key = (
+                spec.model_id.to_string(),
+                spec.use_prompt,
+                spec.use_anti_halluc,
+                applied_sot_lang_tokens.clone(),
+                run_idx,
+            );
+            if completed_keys.contains(&key) {
+                debug!(
+                    "benchmark: resume skip (already done) run {}/{} model={} sot={:?}",
+                    run_idx + 1,
+                    runs_per_condition,
+                    spec.model_id,
+                    applied_sot_lang_tokens
+                );
+                continue;
+            }
+
             info!(
                 "benchmark: measure run {}/{} model={} prompt={} anti_halluc={} path={}",
                 run_idx + 1,
