@@ -1,6 +1,8 @@
 use crate::commands::models::switch_active_model;
 use crate::managers::model::{EngineType, ModelManager};
-use crate::managers::transcription::{LongFormConfig, TranscriptionManager};
+use crate::managers::transcription::{
+    LongFormConfig, TranscriptionManager, ANTI_HALLUC_ENTROPY_THOLD, ANTI_HALLUC_N_MAX_TEXT_CTX,
+};
 use crate::settings::{get_settings, write_settings, AppSettings, ModelUnloadTimeout};
 use anyhow::{anyhow, Result};
 use chrono::Local;
@@ -110,6 +112,19 @@ pub struct BenchmarkRunRecord {
     chunk_count: u32,
     max_chunk_secs: Option<f32>,
     sot_lang_tokens: Option<Vec<String>>,
+    /// The `initial_prompt` string actually fed to whisper.cpp — the same
+    /// `custom_words + "\n\n" + transcription_prompt` concatenation assembled
+    /// in `managers/transcription.rs`. Lets the JSON record stand on its own
+    /// when UI-state leaks into a run (e.g. the 2026-04-22 V2 surprise).
+    effective_initial_prompt: Option<String>,
+    /// `n_max_text_ctx` value passed to whisper.cpp's `FullParams` for this
+    /// run. `Some(ANTI_HALLUC_N_MAX_TEXT_CTX)` when anti-halluc is on, None
+    /// otherwise. Survives future tuning of the const.
+    effective_n_max_text_ctx: Option<i32>,
+    /// `entropy_thold` value passed to whisper.cpp's `FullParams` for this
+    /// run. `Some(ANTI_HALLUC_ENTROPY_THOLD)` when anti-halluc is on, None
+    /// otherwise.
+    effective_entropy_thold: Option<f32>,
 }
 
 #[derive(Serialize, Type)]
@@ -159,6 +174,28 @@ pub struct BenchmarkReport {
     runs_per_condition: u32,
     runs: Vec<BenchmarkRunRecord>,
     aggregates: Vec<BenchmarkAggregate>,
+}
+
+/// Mirror of the `initial_prompt` assembly in `managers/transcription.rs`
+/// (`custom_words.join(", ") + "\n\n" + transcription_prompt`), applied to the
+/// post-override `AppSettings` snapshot. Used to stamp every benchmark record
+/// with the exact prompt string whisper.cpp saw. Returns None when both
+/// `custom_words` and `transcription_prompt` are empty or whitespace-only.
+fn compute_effective_initial_prompt(s: &AppSettings) -> Option<String> {
+    let mut parts = Vec::new();
+    if !s.custom_words.is_empty() {
+        parts.push(s.custom_words.join(", "));
+    }
+    if let Some(ref prompt) = s.transcription_prompt {
+        if !prompt.trim().is_empty() {
+            parts.push(prompt.clone());
+        }
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join("\n\n"))
+    }
 }
 
 struct SettingsGuard {
@@ -678,6 +715,9 @@ pub async fn benchmark_transcription_file(
                     chunk_count: 0,
                     max_chunk_secs,
                     sot_lang_tokens: None,
+                    effective_initial_prompt: None,
+                    effective_n_max_text_ctx: None,
+                    effective_entropy_thold: None,
                 });
             }
             continue;
@@ -705,6 +745,9 @@ pub async fn benchmark_transcription_file(
                         chunk_count: 0,
                         max_chunk_secs,
                         sot_lang_tokens: None,
+                        effective_initial_prompt: None,
+                        effective_n_max_text_ctx: None,
+                        effective_entropy_thold: None,
                     });
                 }
                 continue;
@@ -767,6 +810,20 @@ pub async fn benchmark_transcription_file(
         let applied_prompt = s.transcription_prompt.clone();
         let applied_custom_words = s.custom_words.clone();
         let applied_sot_lang_tokens = s.whisper_sot_lang_tokens.clone();
+        // Provenance: stamp every record with what actually reached whisper.cpp,
+        // not just the RunSpec flags. `compute_effective_initial_prompt` mirrors
+        // the concat in `managers/transcription.rs`, so record + decoder stay
+        // in lock-step without an extra round-trip through the engine.
+        let effective_initial_prompt = compute_effective_initial_prompt(&s);
+        let (effective_n_max_text_ctx, effective_entropy_thold) =
+            if is_whisper && spec.use_anti_halluc {
+                (
+                    Some(ANTI_HALLUC_N_MAX_TEXT_CTX),
+                    Some(ANTI_HALLUC_ENTROPY_THOLD),
+                )
+            } else {
+                (None, None)
+            };
 
         for run_idx in 0..runs_per_condition {
             info!(
@@ -817,6 +874,9 @@ pub async fn benchmark_transcription_file(
                     chunk_count: chunks,
                     max_chunk_secs,
                     sot_lang_tokens: applied_sot_lang_tokens.clone(),
+                    effective_initial_prompt: effective_initial_prompt.clone(),
+                    effective_n_max_text_ctx,
+                    effective_entropy_thold,
                 },
                 Err(e) => BenchmarkRunRecord {
                     model_id: spec.model_id.to_string(),
@@ -836,6 +896,9 @@ pub async fn benchmark_transcription_file(
                     chunk_count: chunks,
                     max_chunk_secs,
                     sot_lang_tokens: applied_sot_lang_tokens.clone(),
+                    effective_initial_prompt: effective_initial_prompt.clone(),
+                    effective_n_max_text_ctx,
+                    effective_entropy_thold,
                 },
             };
             runs.push(record);

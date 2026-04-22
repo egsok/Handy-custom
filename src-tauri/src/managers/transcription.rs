@@ -28,6 +28,13 @@ use transcribe_rs::{
     SpeechModel, TranscribeOptions,
 };
 
+/// Anti-hallucination thresholds applied when `settings.whisper_anti_hallucination`
+/// is true. Exposed as `pub const` so benchmark.rs can record the exact values
+/// reaching the decoder (see `BenchmarkRunRecord::effective_n_max_text_ctx` /
+/// `::effective_entropy_thold`). Per OpenWhispr PR #552 / whisper.cpp#1507.
+pub const ANTI_HALLUC_N_MAX_TEXT_CTX: i32 = 128;
+pub const ANTI_HALLUC_ENTROPY_THOLD: f32 = 2.8;
+
 #[derive(Clone, Debug, Serialize)]
 pub struct ModelStateEvent {
     pub event_type: String,
@@ -572,15 +579,15 @@ impl TranscriptionManager {
                                 },
                                 // Anti-hallucination: cap cross-segment context to break
                                 // feedback loops, drop low-confidence (often hallucinated)
-                                // segments. Toggleable via settings.
-                                // Per OpenWhispr PR #552 / whisper.cpp#1507.
+                                // segments. Toggleable via settings. Thresholds lifted to
+                                // module consts so benchmark.rs can record them verbatim.
                                 n_max_text_ctx: if settings.whisper_anti_hallucination {
-                                    Some(128)
+                                    Some(ANTI_HALLUC_N_MAX_TEXT_CTX)
                                 } else {
                                     None
                                 },
                                 entropy_thold: if settings.whisper_anti_hallucination {
-                                    Some(2.8)
+                                    Some(ANTI_HALLUC_ENTROPY_THOLD)
                                 } else {
                                     None
                                 },
