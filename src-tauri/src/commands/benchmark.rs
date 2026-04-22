@@ -28,16 +28,20 @@ struct RunSpec {
 }
 
 const RUN_MATRIX: &[RunSpec] = &[
-    // Whisper-based: 4 conditions per model = (prompt × anti_halluc)
-    // breeze-asr: Group 1 of LID-hack variance probe.
-    // 4 noprompt+ah rows (baseline + 3 LID modes) for sp1+sp2 × 5 runs each = 40 runs.
-    // Original 4 standard rows + Group 2 (champion candidates) added separately
-    // in subsequent surgeries; will all be reverted before merging back to
-    // bench/whisper-matrix.
-    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
-    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: Some(&["ru"]) },
-    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: Some(&["en", "ru"]) },
-    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: Some(&["ru", "en"]) },
+    // Group 2 Phase A: champion-candidate × LID-hack (`["ru"]`) sweep. All rows
+    // carry sot_lang_tokens=Some(["ru"]), so baseline None-LID comparisons come
+    // from prior Group 1 reports and the original matrix rows that were removed
+    // here (medium / ggml-medium 4-row blocks). Matrix will be restored to the
+    // bench/whisper-matrix shape before merge.
+    RunSpec { model_id: "breeze-asr",   engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: Some(&["ru"]) },
+    RunSpec { model_id: "breeze-asr",   engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: Some(&["ru"]) },
+    RunSpec { model_id: "ggml-medium",  engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: Some(&["ru"]) },
+    RunSpec { model_id: "ggml-medium",  engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: Some(&["ru"]) },
+    RunSpec { model_id: "ggml-medium",  engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: Some(&["ru"]) },
+    RunSpec { model_id: "medium",       engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: Some(&["ru"]) },
+    RunSpec { model_id: "medium",       engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: Some(&["ru"]) },
+    // turbo / large kept in matrix for future cross-model comparisons; skipped
+    // at Phase A invocation time via DevTools skipModels.
     RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
     RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: None },
     RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
@@ -46,10 +50,6 @@ const RUN_MATRIX: &[RunSpec] = &[
     RunSpec { model_id: "large", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: None },
     RunSpec { model_id: "large", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
     RunSpec { model_id: "large", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: None },
-    RunSpec { model_id: "medium", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "medium", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "medium", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
-    RunSpec { model_id: "medium", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: None },
     // bond005/whisper-podlodka-turbo — custom Whisper model auto-discovered from models/ dir
     RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
     RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: None },
@@ -70,11 +70,9 @@ const RUN_MATRIX: &[RunSpec] = &[
     RunSpec { model_id: "ggml-large-v3", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: None },
     RunSpec { model_id: "ggml-large-v3", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
     RunSpec { model_id: "ggml-large-v3", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: None },
-    // Standard OpenAI Whisper medium f16 (unquantized) from ggerganov/whisper.cpp
-    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
-    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: None },
+    // (standard ggml-medium baseline 4-row block removed for Phase A; the 3
+    // ggml-medium champion rows above cover the LID-hack sweep. Restore the
+    // baseline block before merging back to bench/whisper-matrix.)
     // Non-Whisper: один condition на модель — prompt им не нужен, anti_halluc не действует
     RunSpec { model_id: "parakeet-tdt-0.6b-v3", engine_label: "parakeet", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
     RunSpec { model_id: "canary-1b-v2", engine_label: "canary", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
