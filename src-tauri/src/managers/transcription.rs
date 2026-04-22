@@ -584,6 +584,23 @@ impl TranscriptionManager {
                                 } else {
                                     None
                                 },
+                                // Peng-style language-ID hack: resolve ISO codes to SOT-context
+                                // token IDs via the loaded whisper ctx vocab, then concatenate
+                                // them into the SOT sequence so decoding is restricted to those
+                                // languages without relying on whisper's own auto-detect. No-op
+                                // when the list is None or every code fails to resolve.
+                                sot_lang_tokens: settings
+                                    .whisper_sot_lang_tokens
+                                    .as_ref()
+                                    .and_then(|codes| {
+                                        let resolved: Vec<i32> = codes
+                                            .iter()
+                                            .filter_map(|c| {
+                                                whisper_engine.ctx_lang_token_id(c)
+                                            })
+                                            .collect();
+                                        (!resolved.is_empty()).then_some(resolved)
+                                    }),
                                 ..Default::default()
                             };
 
