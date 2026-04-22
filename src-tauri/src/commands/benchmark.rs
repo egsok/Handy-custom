@@ -27,18 +27,15 @@ struct RunSpec {
 
 const RUN_MATRIX: &[RunSpec] = &[
     // Whisper-based: 4 conditions per model = (prompt × anti_halluc)
-    // breeze-asr: temporarily narrowed to the LID-hack variance experiment.
-    // Original 4 baseline None-LID rows (noprompt/promptv1 × no-ah/ah) removed
-    // from this branch; will be reinstated before merging back to bench/whisper-matrix.
-    // Experiment: 3 LID modes × 2 prompt configs (noprompt+ah, promptv2+ah).
-    // ["ru"] tests single-token forcing vs auto-detect. ["en","ru"] / ["ru","en"]
-    // test code-switching (Peng-style concatenated tokens, order-sensitive).
+    // breeze-asr: Group 1 of LID-hack variance probe.
+    // 4 noprompt+ah rows (baseline + 3 LID modes) for sp1+sp2 × 5 runs each = 40 runs.
+    // Original 4 standard rows + Group 2 (champion candidates) added separately
+    // in subsequent surgeries; will all be reverted before merging back to
+    // bench/whisper-matrix.
+    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
     RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: Some(&["ru"]) },
     RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: Some(&["en", "ru"]) },
     RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: Some(&["ru", "en"]) },
-    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: Some(&["ru"]) },
-    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: Some(&["en", "ru"]) },
-    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: Some(&["ru", "en"]) },
     RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
     RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: None },
     RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
