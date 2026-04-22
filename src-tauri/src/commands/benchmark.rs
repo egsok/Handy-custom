@@ -7,7 +7,7 @@ use crate::settings::{get_settings, write_settings, AppSettings, ModelUnloadTime
 use anyhow::{anyhow, Result};
 use chrono::Local;
 use hound::{SampleFormat, WavReader};
-use log::info;
+use log::{debug, info, warn};
 use rubato::{FftFixedIn, Resampler};
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -429,10 +429,35 @@ fn compute_aggregates(runs: &[BenchmarkRunRecord]) -> Vec<BenchmarkAggregate> {
     aggregates
 }
 
-/// Writes a partial JSON + MD snapshot to a fixed filename.
-/// Called after each model completes so a later crash does not lose earlier
-/// runs. Overwrites `benchmark-results-checkpoint.json/.md` every call.
+/// Compute the checkpoint file paths for a given input file. Per-input-file
+/// naming prevents concurrent (sp1/sp2) invocations from clobbering each
+/// other's checkpoints, and makes resume deterministic from the caller side.
+fn checkpoint_paths(output_dir: &Path, input_file: &str) -> (PathBuf, PathBuf) {
+    let stem = Path::new(input_file)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown");
+    let safe: String = stem
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let json = output_dir.join(format!("benchmark-checkpoint-{}.json", safe));
+    let md = output_dir.join(format!("benchmark-checkpoint-{}.md", safe));
+    (json, md)
+}
+
+/// Writes a partial JSON + MD snapshot to per-input-file checkpoint paths.
+/// Called after every run so a crash at any point loses at most one run.
+/// Caller provides pre-computed paths to amortize the stem-sanitize cost.
 fn write_checkpoint(
+    json_path: &Path,
+    md_path: &Path,
     output_dir: &Path,
     file_path: &str,
     warmup_path: &Option<String>,
@@ -451,10 +476,8 @@ fn write_checkpoint(
         runs: runs.to_vec(),
         aggregates,
     };
-    let json_path = output_dir.join("benchmark-results-checkpoint.json");
-    let md_path = output_dir.join("benchmark-results-checkpoint.md");
-    std::fs::write(&json_path, serde_json::to_string_pretty(&report)?)?;
-    std::fs::write(&md_path, build_markdown(&report))?;
+    std::fs::write(json_path, serde_json::to_string_pretty(&report)?)?;
+    std::fs::write(md_path, build_markdown(&report))?;
     Ok(())
 }
 
@@ -613,6 +636,9 @@ pub async fn benchmark_transcription_file(
         .parent()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| PathBuf::from("."));
+
+    // Per-input-file checkpoint paths — computed once, used per-run below.
+    let (ckpt_json_path, ckpt_md_path) = checkpoint_paths(&output_dir_path, &file_path);
 
     info!(
         "benchmark: starting — input={} warmup={:?} runs={} skip={:?} max_chunk_override={:?} language={} prompt_override={} skip_no_prompt={} sot_lang_tokens_override={:?}",
@@ -917,16 +943,37 @@ pub async fn benchmark_transcription_file(
                 },
             };
             runs.push(record);
-        }
 
-        // Checkpoint: write a partial JSON report after each model finishes so a
-        // subsequent crash (e.g. foreign C++ exception on the next model) does
-        // not lose already-collected data. We overwrite the same file per run
-        // so the final rename at the end makes it permanent.
-        if let Err(e) = write_checkpoint(&output_dir_path, &file_path, &warmup_path, audio_duration_s, runs_per_condition, &runs) {
-            log::warn!("benchmark: failed to write checkpoint after {}: {}", spec.model_id, e);
-        } else {
-            info!("benchmark: checkpoint written after model {}", spec.model_id);
+            // Per-run checkpoint. Keeps the crash-loss bounded to the single
+            // in-flight transcribe (the new record is already in `runs` by
+            // this point, so it survives too). Overwrites the same per-input-
+            // file path each time. ~50ms write overhead vs ~50s transcribe —
+            // negligible.
+            if let Err(e) = write_checkpoint(
+                &ckpt_json_path,
+                &ckpt_md_path,
+                &output_dir_path,
+                &file_path,
+                &warmup_path,
+                audio_duration_s,
+                runs_per_condition,
+                &runs,
+            ) {
+                log::warn!(
+                    "benchmark: failed to write checkpoint after run {}/{} model {}: {}",
+                    run_idx + 1,
+                    runs_per_condition,
+                    spec.model_id,
+                    e
+                );
+            } else {
+                debug!(
+                    "benchmark: checkpoint written after run {}/{} model {}",
+                    run_idx + 1,
+                    runs_per_condition,
+                    spec.model_id
+                );
+            }
         }
     }
 
@@ -956,6 +1003,28 @@ pub async fn benchmark_transcription_file(
 
     let md_text = build_markdown(&report);
     std::fs::write(&md_path, md_text).map_err(|e| format!("Failed to write MD: {}", e))?;
+
+    // Success → remove the checkpoint files so the next invocation for this
+    // input_file starts fresh (not resume-from-complete). Missing-file errors
+    // are benign: user may have aborted mid-checkpoint or never resumed.
+    if let Err(e) = std::fs::remove_file(&ckpt_json_path) {
+        if e.kind() != std::io::ErrorKind::NotFound {
+            warn!(
+                "benchmark: failed to remove checkpoint JSON {}: {}",
+                ckpt_json_path.display(),
+                e
+            );
+        }
+    }
+    if let Err(e) = std::fs::remove_file(&ckpt_md_path) {
+        if e.kind() != std::io::ErrorKind::NotFound {
+            warn!(
+                "benchmark: failed to remove checkpoint MD {}: {}",
+                ckpt_md_path.display(),
+                e
+            );
+        }
+    }
 
     info!(
         "benchmark: done — {} runs, report written to {} and {}",
