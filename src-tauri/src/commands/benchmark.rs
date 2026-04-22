@@ -27,11 +27,10 @@ struct RunSpec {
 
 const RUN_MATRIX: &[RunSpec] = &[
     // Whisper-based: 4 conditions per model = (prompt × anti_halluc)
-    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
-    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: None },
-    // breeze-asr LID-hack sweep: 3 modes × 2 (noprompt+ah, promptv2+ah) configs.
+    // breeze-asr: temporarily narrowed to the LID-hack variance experiment.
+    // Original 4 baseline None-LID rows (noprompt/promptv1 × no-ah/ah) removed
+    // from this branch; will be reinstated before merging back to bench/whisper-matrix.
+    // Experiment: 3 LID modes × 2 prompt configs (noprompt+ah, promptv2+ah).
     // ["ru"] tests single-token forcing vs auto-detect. ["en","ru"] / ["ru","en"]
     // test code-switching (Peng-style concatenated tokens, order-sensitive).
     RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: Some(&["ru"]) },
