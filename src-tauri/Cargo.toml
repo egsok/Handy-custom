@@ -35,6 +35,10 @@ tauri = { version = "2.10.2", features = [
   "macos-private-api",
   "tray-icon",
   'image-png',
+  # TEMPORARY: enable DevTools in release builds so the 593-run benchmark
+  # snippet can be pasted into F12 console. Release binary is ~10% faster
+  # than debug on FFI-heavy workloads. Revert after 2026-04-23 night run.
+  'devtools',
 ] }
 tauri-plugin-log = "2.7.1"
 tauri-plugin-opener = "2.5.2"

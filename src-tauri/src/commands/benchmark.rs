@@ -27,53 +27,71 @@ struct RunSpec {
     sot_lang_tokens: Option<&'static [&'static str]>,
 }
 
+// Superset RUN_MATRIX for the 2026-04-23 night run (Blocks A / A2 / B / C /
+// C2 / D / F / G / J). Each row is the unique (model_id, use_prompt,
+// use_anti_halluc, sot_lang_tokens) signature — the per-invocation `prompt`
+// override and `language` arg cover the remaining axes (V1/V2/V3/V4 and
+// ru/auto). Resume-key now includes effective_initial_prompt + language,
+// so the same row run with different prompts / languages is distinct.
+//
+// Layout: for each Whisper model, the 4 (use_prompt × ah) × sot=None combos
+// cover all "Angle C" style conditions. Extra rows for LID variants where
+// Block G and the original Phase A/1 experiments need them.
 const RUN_MATRIX: &[RunSpec] = &[
-    // Group 2 Phase A: champion-candidate × LID-hack (`["ru"]`) sweep. All rows
-    // carry sot_lang_tokens=Some(["ru"]), so baseline None-LID comparisons come
-    // from prior Group 1 reports and the original matrix rows that were removed
-    // here (medium / ggml-medium 4-row blocks). Matrix will be restored to the
-    // bench/whisper-matrix shape before merge.
-    RunSpec { model_id: "breeze-asr",   engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: Some(&["ru"]) },
-    RunSpec { model_id: "breeze-asr",   engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: Some(&["ru"]) },
-    RunSpec { model_id: "ggml-medium",  engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: Some(&["ru"]) },
-    RunSpec { model_id: "ggml-medium",  engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: Some(&["ru"]) },
-    RunSpec { model_id: "ggml-medium",  engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: Some(&["ru"]) },
-    RunSpec { model_id: "medium",       engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: Some(&["ru"]) },
-    RunSpec { model_id: "medium",       engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: Some(&["ru"]) },
-    // turbo / large kept in matrix for future cross-model comparisons; skipped
-    // at Phase A invocation time via DevTools skipModels.
+    // ==== breeze-asr (Block A / A2 / B / F / J) ====
+    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
+    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: true , use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: true , use_anti_halluc: true , sot_lang_tokens: None },
+
+    // ==== ggml-medium (Block A / A2 / B / G) ====
+    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
+    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: true , use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: true , use_anti_halluc: true , sot_lang_tokens: None },
+    // Block G: ggml-medium noprompt+ah × LID en+ru.
+    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: Some(&["en", "ru"]) },
+
+    // ==== medium (Block B) ====
+    RunSpec { model_id: "medium", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "medium", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
+    RunSpec { model_id: "medium", engine_label: "whisper", use_prompt: true , use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "medium", engine_label: "whisper", use_prompt: true , use_anti_halluc: true , sot_lang_tokens: None },
+
+    // ==== turbo (Block A / B) ====
     RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: None },
     RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
-    RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: None },
+    RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: true , use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: true , use_anti_halluc: true , sot_lang_tokens: None },
+
+    // ==== large (Block C / C2) ====
     RunSpec { model_id: "large", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "large", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: None },
     RunSpec { model_id: "large", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
-    RunSpec { model_id: "large", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: None },
-    // bond005/whisper-podlodka-turbo — custom Whisper model auto-discovered from models/ dir
-    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
-    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: None },
-    // LID-hack sweep: Peng-style concatenated SOT language tokens. Order matters
-    // (first token biases whisper's language head most), so we measure both
-    // permutations and keep prompt/anti-halluc off to isolate the effect.
-    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: Some(&["ru", "en"]) },
-    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: Some(&["en", "ru"]) },
-    // antony66/whisper-large-v3-russian (via Limtech's GGML conversion) — custom Whisper model
-    RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
-    RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: None },
-    // Standard OpenAI Whisper large-v3 f16 (unquantized) from ggerganov/whisper.cpp
+    RunSpec { model_id: "large", engine_label: "whisper", use_prompt: true , use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "large", engine_label: "whisper", use_prompt: true , use_anti_halluc: true , sot_lang_tokens: None },
+
+    // ==== ggml-large-v3 (Block C) ====
     RunSpec { model_id: "ggml-large-v3", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "ggml-large-v3", engine_label: "whisper", use_prompt: true,  use_anti_halluc: false, sot_lang_tokens: None },
     RunSpec { model_id: "ggml-large-v3", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
-    RunSpec { model_id: "ggml-large-v3", engine_label: "whisper", use_prompt: true,  use_anti_halluc: true , sot_lang_tokens: None },
-    // (standard ggml-medium baseline 4-row block removed for Phase A; the 3
-    // ggml-medium champion rows above cover the LID-hack sweep. Restore the
-    // baseline block before merging back to bench/whisper-matrix.)
-    // Non-Whisper: один condition на модель — prompt им не нужен, anti_halluc не действует
+    RunSpec { model_id: "ggml-large-v3", engine_label: "whisper", use_prompt: true , use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "ggml-large-v3", engine_label: "whisper", use_prompt: true , use_anti_halluc: true , sot_lang_tokens: None },
+
+    // ==== whisper-large-v3-russian (Block C / C2) ====
+    RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
+    RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: true , use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: true , use_anti_halluc: true , sot_lang_tokens: None },
+
+    // ==== whisper-podlodka-turbo (Block B / D / G) ====
+    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
+    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: true , use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: true , use_anti_halluc: true , sot_lang_tokens: None },
+    // Block G: podlodka noprompt+ah × LID variants.
+    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: Some(&["en", "ru"]) },
+    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: Some(&["ru", "en"]) },
+
+    // ==== Non-Whisper (kept for completeness; not invoked by any block below) ====
     RunSpec { model_id: "parakeet-tdt-0.6b-v3", engine_label: "parakeet", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
     RunSpec { model_id: "canary-1b-v2", engine_label: "canary", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
     RunSpec { model_id: "gigaam-v3-e2e-ctc", engine_label: "gigaam", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
@@ -175,6 +193,26 @@ pub struct BenchmarkOverrides {
     /// Missing or unreadable file → fresh start with a warning, not an error:
     /// callers can pass the expected checkpoint path unconditionally.
     pub resume_from: Option<String>,
+    /// Tight filter: when Some(list), only RUN_MATRIX rows whose
+    /// (model_id, use_prompt, use_anti_halluc, sot_lang_tokens) tuple appears
+    /// in the list are executed. Every other row is skipped silently. Used by
+    /// the night-run queue runner to pin each invocation to exactly the
+    /// conditions it's supposed to measure, independent of
+    /// skip_models / skip_no_prompt. `model_id_null_as_wildcard` is NOT a
+    /// feature — explicit tuples only.
+    pub only_conditions: Option<Vec<ConditionFilter>>,
+}
+
+/// Single condition signature the night-run queue uses to pin an invocation
+/// to a specific matrix-row subset. See `BenchmarkOverrides::only_conditions`.
+#[derive(Deserialize, Serialize, Type, Debug, Clone)]
+pub struct ConditionFilter {
+    pub model_id: String,
+    pub use_prompt: bool,
+    pub use_anti_halluc: bool,
+    /// None = sot_lang_tokens must equal None (i.e. auto-LID / no Peng-hack).
+    /// Some(list) = sot_lang_tokens must equal that exact list.
+    pub sot_lang_tokens: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Type)]
@@ -696,61 +734,80 @@ pub async fn benchmark_transcription_file(
     // file). `completed_keys` holds the per-run tuples we should skip below.
     // Errored runs from the prior report are dropped entirely so they retry.
     // Missing/corrupt file → fresh start with a warning (caller-friendly).
-    let (completed_keys, mut runs): (
-        std::collections::HashSet<(String, bool, bool, Option<Vec<String>>, u32)>,
-        Vec<BenchmarkRunRecord>,
-    ) = match overrides.resume_from.as_deref() {
-        Some(path) if Path::new(path).exists() => {
-            match std::fs::read_to_string(path)
-                .map_err(|e| e.to_string())
-                .and_then(|s| {
-                    serde_json::from_str::<BenchmarkReport>(&s).map_err(|e| e.to_string())
-                }) {
-                Ok(prev) => {
-                    let total = prev.runs.len();
-                    let ok_runs: Vec<BenchmarkRunRecord> =
-                        prev.runs.into_iter().filter(|r| r.error.is_none()).collect();
-                    let errored = total - ok_runs.len();
-                    let keys: std::collections::HashSet<_> = ok_runs
-                        .iter()
-                        .map(|r| {
-                            (
-                                r.model_id.clone(),
-                                r.use_prompt,
-                                r.use_anti_halluc,
-                                r.sot_lang_tokens.clone(),
-                                r.run_idx,
-                            )
-                        })
-                        .collect();
-                    info!(
-                        "benchmark: resuming from {} ({} completed will skip, {} errored will retry)",
-                        path,
-                        keys.len(),
-                        errored
-                    );
-                    (keys, ok_runs)
-                }
-                Err(e) => {
-                    warn!(
-                        "benchmark: resume_from {} exists but failed to parse ({}) — starting fresh",
-                        path, e
-                    );
-                    (std::collections::HashSet::new(), Vec::new())
+    //
+    // Key tuple must capture everything that could change between otherwise-
+    // equivalent RUN_MATRIX row invocations: the prompt string actually used
+    // (V1/V2/V3/V4 differ but same use_prompt=true) and the top-level
+    // `language` arg (ru vs auto are different conditions per eval.py
+    // naming scheme).
+    type RunKey = (
+        String,          // model_id
+        bool,            // use_prompt
+        Option<String>,  // effective_initial_prompt (distinguishes V1/V2/V3/V4 & custom_words)
+        bool,            // use_anti_halluc
+        Option<Vec<String>>, // sot_lang_tokens
+        String,          // language (ru / auto / en / ...)
+        u32,             // run_idx
+    );
+    fn run_key(r: &BenchmarkRunRecord) -> RunKey {
+        (
+            r.model_id.clone(),
+            r.use_prompt,
+            r.effective_initial_prompt.clone(),
+            r.use_anti_halluc,
+            r.sot_lang_tokens.clone(),
+            r.language.clone(),
+            r.run_idx,
+        )
+    }
+    let (completed_keys, mut runs): (std::collections::HashSet<RunKey>, Vec<BenchmarkRunRecord>) =
+        match overrides.resume_from.as_deref() {
+            Some(path) if Path::new(path).exists() => {
+                match std::fs::read_to_string(path)
+                    .map_err(|e| e.to_string())
+                    .and_then(|s| {
+                        serde_json::from_str::<BenchmarkReport>(&s).map_err(|e| e.to_string())
+                    }) {
+                    Ok(prev) => {
+                        let total = prev.runs.len();
+                        let ok_runs: Vec<BenchmarkRunRecord> = prev
+                            .runs
+                            .into_iter()
+                            .filter(|r| r.error.is_none())
+                            .collect();
+                        let errored = total - ok_runs.len();
+                        let keys: std::collections::HashSet<RunKey> =
+                            ok_runs.iter().map(run_key).collect();
+                        info!(
+                            "benchmark: resuming from {} ({} completed will skip, {} errored will retry)",
+                            path,
+                            keys.len(),
+                            errored
+                        );
+                        (keys, ok_runs)
+                    }
+                    Err(e) => {
+                        warn!(
+                            "benchmark: resume_from {} exists but failed to parse ({}) — starting fresh",
+                            path, e
+                        );
+                        (std::collections::HashSet::new(), Vec::new())
+                    }
                 }
             }
-        }
-        Some(path) => {
-            info!(
-                "benchmark: resume_from file not found ({}) — starting fresh",
-                path
-            );
-            (std::collections::HashSet::new(), Vec::new())
-        }
-        None => (std::collections::HashSet::new(), Vec::new()),
-    };
+            Some(path) => {
+                info!(
+                    "benchmark: resume_from file not found ({}) — starting fresh",
+                    path
+                );
+                (std::collections::HashSet::new(), Vec::new())
+            }
+            None => (std::collections::HashSet::new(), Vec::new()),
+        };
     let mut previous_model: Option<String> = None;
 
+    // Precompute only_conditions matching set once for O(1) per-row check.
+    let only_conditions_ref = overrides.only_conditions.as_ref();
     for spec in RUN_MATRIX {
         if skip_set.contains(spec.model_id) {
             info!("benchmark: skipping {} (in skip_models)", spec.model_id);
@@ -762,6 +819,25 @@ pub async fn benchmark_transcription_file(
                 spec.model_id
             );
             continue;
+        }
+        // only_conditions pin: spec must match one of the listed tuples.
+        if let Some(list) = only_conditions_ref {
+            let spec_sot: Option<Vec<String>> = spec
+                .sot_lang_tokens
+                .map(|arr| arr.iter().map(|s| s.to_string()).collect());
+            let matches = list.iter().any(|c| {
+                c.model_id == spec.model_id
+                    && c.use_prompt == spec.use_prompt
+                    && c.use_anti_halluc == spec.use_anti_halluc
+                    && c.sot_lang_tokens == spec_sot
+            });
+            if !matches {
+                debug!(
+                    "benchmark: skipping {} use_prompt={} ah={} sot={:?} (not in only_conditions)",
+                    spec.model_id, spec.use_prompt, spec.use_anti_halluc, spec_sot
+                );
+                continue;
+            }
         }
 
         let model_info_opt = model_manager.get_model_info(spec.model_id);
@@ -923,26 +999,29 @@ pub async fn benchmark_transcription_file(
             };
 
         for run_idx in 0..runs_per_condition {
-            // Resume short-circuit: if this (model_id, use_prompt, ah,
-            // sot_lang_tokens, run_idx) is in the seeded completed-set,
-            // skip. The seeded run is already in `runs` and flows into the
-            // final report unchanged. Warmup has already happened for this
-            // spec — wasteful only when all runs of a spec are already done,
-            // but that's a single model-load, acceptable overhead.
-            let key = (
+            // Resume short-circuit: skip if this full tuple is already in the
+            // seeded completed-set. The seeded run is already in `runs` and
+            // flows into the final report unchanged. Warmup has already
+            // happened for this spec — wasteful only when all runs of a spec
+            // are already done, but that's a single model-load.
+            let key: RunKey = (
                 spec.model_id.to_string(),
                 spec.use_prompt,
+                effective_initial_prompt.clone(),
                 spec.use_anti_halluc,
                 applied_sot_lang_tokens.clone(),
+                language.clone(),
                 run_idx,
             );
             if completed_keys.contains(&key) {
                 debug!(
-                    "benchmark: resume skip (already done) run {}/{} model={} sot={:?}",
+                    "benchmark: resume skip (already done) run {}/{} model={} prompt={:?} sot={:?} lang={}",
                     run_idx + 1,
                     runs_per_condition,
                     spec.model_id,
-                    applied_sot_lang_tokens
+                    effective_initial_prompt.as_ref().map(|s| s.chars().take(40).collect::<String>()),
+                    applied_sot_lang_tokens,
+                    language
                 );
                 continue;
             }
