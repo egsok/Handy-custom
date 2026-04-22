@@ -1,4 +1,133 @@
-# Next Agent Handoff — LID-Hack Variance Experiment Continuation
+# Next Agent Handoff — Night-Run Orchestration + MSVC /O2 Fix
+
+**Date:** 2026-04-23 (overnight of 2026-04-22/23)
+**Branch:** `bench/whisper-matrix+lid-hack` (tip: `5be5a82` in Handy; `198f290` in whisper-rs-sys-fork)
+**User:** Egor
+
+## TL;DR (60 seconds)
+
+- **Parameter-provenance chain shipped (B1 + B2a from prior handoff backlog).** Every `BenchmarkRunRecord` now carries `effective_initial_prompt`, `effective_n_max_text_ctx`, `effective_entropy_thold`, and `decoder_prompt_init_tokens` (actual SOT tokens read back from whisper.cpp state via new FFI getter). Smoke verified on 4 breeze-asr rows at 2026-04-22 22:26.
+- **Long-run reliability landed.** Per-run per-input-file checkpoint (`benchmark-checkpoint-<stem>.{json,md}`), resume-from-checkpoint tolerant of missing/corrupt files, resume-key widened to `(model_id, use_prompt, effective_initial_prompt, use_anti_halluc, sot_lang_tokens, language, run_idx)`.
+- **RUN_MATRIX reshaped to 38-row superset** covering all blocks needed for the 2026-04-23 night run (A / A2 / B / C / C2 / D / F / G / J). New `BenchmarkOverrides.only_conditions: Vec<ConditionFilter>` pins each invocation to an exact tuple subset without relying on skipModels/skipNoPrompt. Matrix must be restored to `bench/whisper-matrix` shape before merging upstream.
+- **Queue-runner written:** `C:/Users/Egor Sokolov/Documents/REAPER Media/night-run-queue.js` chains 52 invocations (~593 transcripts) with resume. DRY_RUN flag for smoke verification.
+- **🔥 MAJOR FIND: MSVC /O2 was silently disabled.** cmake 4.2.3 + VS2022 generator dropped the default `CMAKE_CXX_FLAGS_RELEASE` initializers, so ggml-cpu.c and whisper.cpp TUs compiled at effectively `/Od`. Large-model RTF was 0.10 vs historical 0.06. Fix (whisper-rs-sys-fork `198f290`): explicit `/MD /O2 /Ob2 /DNDEBUG` in build.rs. Confirmed working: fresh sp2 Block C first run at **RTF 0.047** (even better than historical). Night-run budget shrank from ~8h to ~4h.
+- **Night run in progress** as this handoff is written. Expected completion ~04:30 AM 2026-04-23. Morning: check `window.__night_results` in DevTools for the 52 reportPath entries.
+
+## What's running RIGHT NOW (2026-04-23 00:40+)
+
+The queue-runner at `night-run-queue.js` is iterating through 52 invocations (all 9 blocks per spec from user's master plan). Phase 1 Block C is in progress — sp1 `large.ru.V1.ah.N10` already completed under the SLOW binary (RTF 0.10) and is in `benchmark-results-20260423-000455.json`; sp2 `large.ru.V1.ah.N10` started with slow binary (1 run @ 0.10 RTF in checkpoint), then Handy was killed, rebuilt with /O2 fix, resumed. The remaining 9 sp2 runs + everything downstream are on the FAST binary.
+
+**Known artifact to clean post-hoc:** sp2 Block C `large.ru.V1.ah.N10` final report will contain 1 slow run (`run_idx=0`, RTF 0.10) + 9 fast runs (~0.047 RTF). User chose post-hoc filter approach (drop that single record) over re-run. Medians are robust so stats aren't meaningfully corrupted, but RTF mean/stdev for that one condition will be slightly inflated.
+
+## What was shipped this session (chronological, with commit hashes)
+
+### Stage 0 — Handy record enrichment (commit `926afdc`)
+- Hoisted anti-halluc thresholds to `pub const ANTI_HALLUC_N_MAX_TEXT_CTX / _ENTROPY_THOLD` in `managers/transcription.rs` (128 and 2.8 — the hardcoded values the decoder actually uses).
+- Added three fields to `BenchmarkRunRecord`: `effective_initial_prompt: Option<String>`, `effective_n_max_text_ctx: Option<i32>`, `effective_entropy_thold: Option<f32>`.
+- Added helper `fn compute_effective_initial_prompt(s: &AppSettings) -> Option<String>` mirroring the `custom_words + "\n\n" + transcription_prompt` concat from `transcription.rs:557-572`.
+- Populated in both success and pre-transcribe error paths (4 record-construction sites total).
+
+### Stage 1 (B1) — C++ stderr log (whisper-rs-sys-fork `7e19fa8`, bumped to `0.15.1-lid-hack.2`)
+- In `whisper.cpp/src/whisper.cpp` after `prompt_init` assembly in `whisper_full_with_state` (~line 6989): `WHISPER_LOG_INFO("%s: prompt_init size=%zu tokens=[%s]\n", __func__, ...)` with comma-separated token IDs. Fires once per transcribe. Single-line so `rg 'prompt_init size='` filters stderr cleanly.
+
+### Stage 2a — C++ capture + FFI getter (whisper-rs-sys-fork `c2ebb62`, bumped to `0.15.1-lid-hack.3`)
+- Added `std::vector<whisper_token> last_prompt_init;` member to `whisper_state` struct.
+- Assignment `state->last_prompt_init = prompt_init;` in the primary SOT path (after B1 log).
+- New C function `whisper_get_last_prompt_init(whisper_state*, int* out_count)` declared in `whisper.h`, implemented in `whisper.cpp`. Returns nullptr+0 on empty state.
+
+### Stage 2b — whisper-rs wrapper (whisper-rs-fork `eb282bf`)
+- `WhisperState::last_prompt_init(&self) -> Vec<WhisperTokenId>`. Safe wrapper around the unsafe FFI call; copies into owned Vec.
+
+### Stage 2c — transcribe-rs pass-through (transcribe-rs-fork `8454e4e`)
+- `WhisperEngine::last_prompt_init(&self) -> Vec<i32>`. Delegates to `WhisperState::last_prompt_init`. Mirrors existing `ctx_lang_token_id` pass-through pattern.
+
+### Stage 2d — Handy capture into record (commit `fbca06f`)
+- Added `last_whisper_prompt_init: Arc<Mutex<Option<Vec<i32>>>>` field to `TranscriptionManager`.
+- In `managers/transcription.rs::transcribe`: after `whisper_engine.transcribe_with(...)` succeeds (or fails), read back `whisper_engine.last_prompt_init()` and store in the mutex.
+- Also clear the mutex at start of `transcribe` and `transcribe_long_form` (so non-Whisper calls don't leak stale whisper-side data).
+- Public getter `take_last_whisper_prompt_init(&self) -> Option<Vec<i32>>` on TranscriptionManager (consuming — takes from mutex).
+- `BenchmarkRunRecord.decoder_prompt_init_tokens: Option<Vec<i32>>` field. Populated by calling the getter after each transcribe in benchmark.rs.
+
+### Phase A matrix surgery (commit `848480e`)
+- Narrowed RUN_MATRIX to 7 champion-candidate rows for a brief Phase A smoke test. Superseded later by `5be5a82`.
+
+### Per-run per-input-file checkpoint (commit `0b92e95`)
+- New `checkpoint_paths(output_dir, input_file) -> (PathBuf, PathBuf)` helper producing `benchmark-checkpoint-<sanitized_stem>.{json,md}`. Sp1/sp2 no longer clobber each other.
+- `write_checkpoint` now takes pre-computed paths + flushes per-run (moved inside the inner `for run_idx` loop).
+- Checkpoint files removed after successful final report write.
+
+### Resume-from-checkpoint (commit `cc2035f`)
+- New `BenchmarkOverrides.resume_from: Option<String>` field.
+- Start of `benchmark_transcription_file`: if `resume_from` points to existing parseable file, seed `runs: Vec` with its non-errored records and build a HashSet of completed run-keys. Tolerant to missing/corrupt (warn, fresh start).
+- Inner loop skips run_idx iterations whose full key is already in the HashSet.
+- `BenchmarkReport / BenchmarkRunRecord / BenchmarkAggregate` made `Deserialize` (were `Serialize`-only).
+
+### Superset matrix + only_conditions + prompt-aware resume (commit `5be5a82`)
+- RUN_MATRIX expanded to 38 rows covering 8 Whisper models × 4 (use_prompt × ah) combos × needed LID variants + 3 non-whisper.
+- New `BenchmarkOverrides.only_conditions: Option<Vec<ConditionFilter>>` — strict pin. Rows not in the list are silently skipped.
+- `ConditionFilter` struct: `{ model_id, use_prompt, use_anti_halluc, sot_lang_tokens }`.
+- Resume-key widened to include `effective_initial_prompt` AND `language`, so V1/V2/V3/V4 runs and ru/auto runs for the same matrix row are distinct and don't conflate during resume.
+- Cargo.toml: **TEMPORARY** `devtools` feature on `tauri` so F12 works in the release build. Revert after night run completes.
+
+### MSVC /O2 fix (whisper-rs-sys-fork `198f290`, bumped to `0.15.1-lid-hack.4`)
+- In `build.rs` inside `if cfg!(target_os = "windows")`, added:
+  ```rust
+  config.define("CMAKE_C_FLAGS_RELEASE", "/MD /O2 /Ob2 /DNDEBUG");
+  config.define("CMAKE_CXX_FLAGS_RELEASE", "/MD /O2 /Ob2 /DNDEBUG");
+  ```
+- **Why:** cmake 4.2.3 + VS2022 generator was producing vcxproj files with empty `<Optimization></Optimization>` for the Release config. Verified via `.tlog` that `ggml-cpu.c` was compiled without `/O2 /Ob2 /DNDEBUG`. This caused a ~1.67× slowdown on all whisper.cpp TUs relative to historical builds (large-model RTF 0.06 → 0.10). Post-fix confirmed at RTF 0.047 on the same condition.
+- **Safe wrt numerics:** these flags affect only optimization/inlining, not FP semantics (no `/fp:fast`, no `/Qfast_transcendentals`). Bit-exact output preserved.
+- **Rebuild required** because whisper.cpp TUs need to recompile with new flags. Full `bun run tauri build` took ~7 min.
+
+## Pending cleanups before merging back to `bench/whisper-matrix` (or wider)
+
+1. **RUN_MATRIX superset + only_conditions + matrix surgery commits** — all were experiment-specific scaffolding. Before merging the core LID-hack feature + provenance chain upstream, revert or squash these so the main branch has a clean matrix.
+2. **Cargo.toml `devtools` feature on `tauri`** — temporary for night-run F12. Revert after run completes.
+3. **Post-hoc filter the sp2 Block C outlier** — single run_idx=0 in `large.ru.V1.ah` with RTF 0.10 (pre-/O2 data). Drop it from the final report to get clean stats.
+4. **B3 / B4 from prior handoff backlog** — integrity diff + fidelity test in transcribe-rs. Not done this session; still deferred.
+
+## Morning checklist (2026-04-23 ~08:00)
+
+1. Open Handy → F12 → Console → type `window.__night_results` — view all 52 invocation results (reportPath per successful one, error per failed one).
+2. Send the agent:
+   - Queue length and how many succeeded / errored
+   - Any error messages
+   - List of final report filenames (all under `C:/Users/Egor Sokolov/Documents/REAPER Media/benchmark-results-20260423-*.json`)
+3. Agent parses JSONs, aggregates by block / condition / speaker, produces summary table (median RTF, length, determinism, LLM-Q pipeline inputs).
+4. Decide on re-runs for any failed invocations.
+5. Cleanup commits (see section above).
+
+## Safe commands during / immediately after the night run
+
+### Check progress (anytime, read-only, safe):
+```powershell
+# Latest sp1 checkpoint
+Get-Content "C:\Users\Egor Sokolov\Documents\REAPER Media\benchmark-checkpoint-Voice_to_text_benchmark.json" -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json | Select-Object -ExpandProperty runs | Select-Object -Last 5 model_id, run_idx, @{N='rtf';E={[math]::Round($_.rtf,3)}}, transcribe_time_ms | Format-Table
+
+# Latest sp2 checkpoint
+Get-Content "C:\Users\Egor Sokolov\Documents\REAPER Media\benchmark-checkpoint-ASR_benchmark_Nastya.json" -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json | Select-Object -ExpandProperty runs | Select-Object -Last 5 model_id, run_idx, @{N='rtf';E={[math]::Round($_.rtf,3)}}, transcribe_time_ms | Format-Table
+
+# Count final reports generated tonight
+(Get-ChildItem "C:\Users\Egor Sokolov\Documents\REAPER Media\benchmark-results-20260423-*.json" -ErrorAction SilentlyContinue).Count
+```
+
+### If crash mid-night:
+1. Launch `D:\h\release\handy.exe` (NOT via tauri dev — release has /O2 fix and devtools feature)
+2. F12 → Console → paste the entire `night-run-queue.js` content again (no edits needed — DRY_RUN is already `false`, resume_from is set for every invocation)
+3. Runner skips all completed runs, continues from first incomplete one
+
+## File paths for next agent
+
+- **Night-run queue**: `C:/Users/Egor Sokolov/Documents/REAPER Media/night-run-queue.js`
+- **This handoff**: `D:/dev/Handy/NEXT-AGENT-HANDOFF.md` (prepended; prior content below retained for history)
+- **Plan file**: `C:/Users/Egor Sokolov/.claude/plans/d-dev-handy-next-agent-handoff-md-elegant-karp.md` (last updated with reliability + resume plan)
+- **Release binary**: `D:/h/release/handy.exe` (with /O2 + devtools feature, built 2026-04-23 00:35)
+- **Whisper.cpp fork tip**: `D:/dev/whisper-rs-sys-fork` @ `feature/sot-lang-tokens` @ `198f290`
+- **Handy branch tip**: `D:/dev/Handy` @ `bench/whisper-matrix+lid-hack` @ `5be5a82`
+
+---
+
+# Previous handoff — LID-Hack Variance Experiment Continuation (archival)
 
 **Date:** 2026-04-22 evening
 **Branch:** `bench/whisper-matrix+lid-hack` (tip: `0403ad8`)
