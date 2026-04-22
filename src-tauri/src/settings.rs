@@ -434,6 +434,8 @@ pub struct AppSettings {
     pub transcription_prompt: Option<String>,
     #[serde(default)]
     pub whisper_anti_hallucination: bool,
+    #[serde(default)]
+    pub whisper_sot_lang_tokens: Option<Vec<String>>,
 }
 
 fn default_model() -> String {
@@ -810,6 +812,7 @@ pub fn get_default_settings() -> AppSettings {
         extra_recording_buffer_ms: 0,
         transcription_prompt: None,
         whisper_anti_hallucination: false,
+        whisper_sot_lang_tokens: None,
     }
 }
 
