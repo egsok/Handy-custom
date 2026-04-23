@@ -11,13 +11,33 @@
 - **RUN_MATRIX reshaped to 38-row superset** covering all blocks needed for the 2026-04-23 night run (A / A2 / B / C / C2 / D / F / G / J). New `BenchmarkOverrides.only_conditions: Vec<ConditionFilter>` pins each invocation to an exact tuple subset without relying on skipModels/skipNoPrompt. Matrix must be restored to `bench/whisper-matrix` shape before merging upstream.
 - **Queue-runner written:** `C:/Users/Egor Sokolov/Documents/REAPER Media/night-run-queue.js` chains 52 invocations (~593 transcripts) with resume. DRY_RUN flag for smoke verification.
 - **🔥 MAJOR FIND: MSVC /O2 was silently disabled.** cmake 4.2.3 + VS2022 generator dropped the default `CMAKE_CXX_FLAGS_RELEASE` initializers, so ggml-cpu.c and whisper.cpp TUs compiled at effectively `/Od`. Large-model RTF was 0.10 vs historical 0.06. Fix (whisper-rs-sys-fork `198f290`): explicit `/MD /O2 /Ob2 /DNDEBUG` in build.rs. Confirmed working: fresh sp2 Block C first run at **RTF 0.047** (even better than historical). Night-run budget shrank from ~8h to ~4h.
-- **Night run in progress** as this handoff is written. Expected completion ~04:30 AM 2026-04-23. Morning: check `window.__night_results` in DevTools for the 52 reportPath entries.
+- **Night run was terminated early by the user** (not left to run overnight). Partial results exist — see "Current state" below. Final aggregation / morning-checklist bullet is moot; what's actually available on disk is a handful of final reports from Phase 1 Block C under two binary configs (slow pre-/O2 + fast post-/O2).
+- **User is now running Handy in daily-use mode** with `breeze-asr__noprompt__auto__lid_ru__ah` (LID=["ru"]) applied via a DevTools settings snippet — the `whisper_sot_lang_tokens` field has no UI binding, so settings were patched directly via `plugin:store|load`+`|set`+`|save`+`set_active_model`.
 
-## What's running RIGHT NOW (2026-04-23 00:40+)
+## Current state (2026-04-23 ~01:00, user going offline to continue in another chat)
 
-The queue-runner at `night-run-queue.js` is iterating through 52 invocations (all 9 blocks per spec from user's master plan). Phase 1 Block C is in progress — sp1 `large.ru.V1.ah.N10` already completed under the SLOW binary (RTF 0.10) and is in `benchmark-results-20260423-000455.json`; sp2 `large.ru.V1.ah.N10` started with slow binary (1 run @ 0.10 RTF in checkpoint), then Handy was killed, rebuilt with /O2 fix, resumed. The remaining 9 sp2 runs + everything downstream are on the FAST binary.
+### Where Handy is right now
+- Running as `D:/h/release/handy.exe` (release build with `/O2` fix AND `devtools` feature enabled via temporary `Cargo.toml` change).
+- Settings have been patched to `breeze-asr__noprompt__auto__lid_ru__ah`:
+  - `selected_model = "breeze-asr"`
+  - `selected_language = "auto"`
+  - `transcription_prompt = null`, `custom_words = []`
+  - `whisper_anti_hallucination = true`
+  - `whisper_sot_lang_tokens = ["ru"]` ← **no UI binding; any Settings-panel interaction risks Zustand writing a stale snapshot back to the store and clobbering this**
+- User switched their record shortcut's mode from Hold-to-Talk to Toggle (via Settings UI Shortcuts tab — safe because Shortcuts tab doesn't touch the whisper_sot_lang_tokens field).
+- The queue-runner IIFE is no longer running; `window.__night_results` may be present with whatever partial results accumulated before the run was terminated.
 
-**Known artifact to clean post-hoc:** sp2 Block C `large.ru.V1.ah.N10` final report will contain 1 slow run (`run_idx=0`, RTF 0.10) + 9 fast runs (~0.047 RTF). User chose post-hoc filter approach (drop that single record) over re-run. Medians are robust so stats aren't meaningfully corrupted, but RTF mean/stdev for that one condition will be slightly inflated.
+### Reports from tonight (under `C:/Users/Egor Sokolov/Documents/REAPER Media/`)
+- **Two completed final reports** from Block C (first invocation per speaker, large.ru.V1.ah.N10):
+  - `benchmark-results-20260423-000455.json` — sp1 large N=10, **RTF ~0.10 (SLOW pre-/O2 binary)**
+  - (possibly) a sp2 final report written during resume if that invocation finished before user killed it
+- **Smoke reports from 2026-04-22 evening** (pre-night run): `benchmark-results-20260422-222629.json` (breeze 4×1), `-234242` / `-234432` (large×1 smoke)
+- **Checkpoints** may still be on disk for partially-completed invocations: `benchmark-checkpoint-<stem>.{json,md}`. The prior cleanup code only removes them on successful completion of that invocation, so aborted invocations leave them behind.
+
+### Known artifact: /O2-mixed Block C data
+- sp1 `large.ru.V1.ah.N10` data is entirely pre-/O2 (RTF ~0.10).
+- sp2 `large.ru.V1.ah.N10` data (if finalized) is 1 slow run + 9 fast runs mixed — or simpler: only a checkpoint exists.
+- If the user wants clean RTF stats post-/O2 on any of these conditions, a re-run (tiny targeted invocation, ~10 min for 20 runs) will give clean data. Prior `benchmark-results-20260422-*` reports were from the pre-/O2 binary (~0.06 RTF historically, though that's from a different code state) — none are directly usable as a post-/O2 baseline.
 
 ## What was shipped this session (chronological, with commit hashes)
 
@@ -81,40 +101,35 @@ The queue-runner at `night-run-queue.js` is iterating through 52 invocations (al
 
 ## Pending cleanups before merging back to `bench/whisper-matrix` (or wider)
 
-1. **RUN_MATRIX superset + only_conditions + matrix surgery commits** — all were experiment-specific scaffolding. Before merging the core LID-hack feature + provenance chain upstream, revert or squash these so the main branch has a clean matrix.
-2. **Cargo.toml `devtools` feature on `tauri`** — temporary for night-run F12. Revert after run completes.
-3. **Post-hoc filter the sp2 Block C outlier** — single run_idx=0 in `large.ru.V1.ah` with RTF 0.10 (pre-/O2 data). Drop it from the final report to get clean stats.
-4. **B3 / B4 from prior handoff backlog** — integrity diff + fidelity test in transcribe-rs. Not done this session; still deferred.
+1. **RUN_MATRIX superset + only_conditions + matrix surgery commits** (`0b92e95`, `cc2035f`, `5be5a82`, and earlier `848480e`) — all were experiment-specific scaffolding. Before merging the core LID-hack feature + provenance chain upstream, revert the matrix surgery and keep the reusable infra (resume/checkpoint/only_conditions + provenance fields).
+2. **Cargo.toml `devtools` feature on `tauri`** — still in place from commit `5be5a82`. Temporary to make F12 work on the release binary; revert before shipping.
+3. **Post-hoc filter or re-run the sp1/sp2 Block C data** collected pre-/O2. sp1 large N=10 is entirely slow (RTF ~0.10); sp2 large is either 0 runs, a partial checkpoint, or 1-slow+9-fast depending on exact termination point. Re-running just those specific conditions is ~10 min at the fast binary.
+4. **Night-run queue did not complete** — the 52-invocation master plan was not executed end-to-end. Either (a) re-kick it off on a fresh run with the fast binary, or (b) pick subset of blocks that matter most and run those. The queue-runner file at `C:/Users/Egor Sokolov/Documents/REAPER Media/night-run-queue.js` is ready to paste again; resume-from-checkpoint handles anything that happened to complete tonight.
+5. **B3 / B4 from prior handoff backlog** — integrity diff + fidelity test in transcribe-rs. Not done this session; still deferred.
 
-## Morning checklist (2026-04-23 ~08:00)
+## Resuming the night-run queue (when user is ready)
 
-1. Open Handy → F12 → Console → type `window.__night_results` — view all 52 invocation results (reportPath per successful one, error per failed one).
-2. Send the agent:
-   - Queue length and how many succeeded / errored
-   - Any error messages
-   - List of final report filenames (all under `C:/Users/Egor Sokolov/Documents/REAPER Media/benchmark-results-20260423-*.json`)
-3. Agent parses JSONs, aggregates by block / condition / speaker, produces summary table (median RTF, length, determinism, LLM-Q pipeline inputs).
-4. Decide on re-runs for any failed invocations.
-5. Cleanup commits (see section above).
+Settings are currently in daily-use mode (`breeze-asr` + LID=["ru"] etc), NOT in the matrix-baseline state the queue expects. The queue-runner invocation's `SettingsGuard` will save whatever's in store at each invocation start and restore it on drop — so when queue runs, it starts from current (daily-use) settings, mutates per-row, restores to (daily-use). This is fine for the queue but means after the queue finishes, settings are back to `breeze-asr`+LID=["ru"]+... If user wants a different daily-use config, they'd set that AFTER the queue.
 
-## Safe commands during / immediately after the night run
+To resume the queue:
+1. `D:\h\release\handy.exe` already running (or re-launch it)
+2. F12 → Console → paste entire `C:/Users/Egor Sokolov/Documents/REAPER Media/night-run-queue.js` content
+3. `DRY_RUN = false` already set
+4. Resume-from-checkpoint will skip whatever completed tonight; runs the rest
 
-### Check progress (anytime, read-only, safe):
+## Safe checks (read-only, anytime):
 ```powershell
-# Latest sp1 checkpoint
-Get-Content "C:\Users\Egor Sokolov\Documents\REAPER Media\benchmark-checkpoint-Voice_to_text_benchmark.json" -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json | Select-Object -ExpandProperty runs | Select-Object -Last 5 model_id, run_idx, @{N='rtf';E={[math]::Round($_.rtf,3)}}, transcribe_time_ms | Format-Table
+# What final reports from tonight exist?
+Get-ChildItem "C:\Users\Egor Sokolov\Documents\REAPER Media\benchmark-results-20260423-*.json" | Select-Object Name, Length, LastWriteTime
 
-# Latest sp2 checkpoint
-Get-Content "C:\Users\Egor Sokolov\Documents\REAPER Media\benchmark-checkpoint-ASR_benchmark_Nastya.json" -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json | Select-Object -ExpandProperty runs | Select-Object -Last 5 model_id, run_idx, @{N='rtf';E={[math]::Round($_.rtf,3)}}, transcribe_time_ms | Format-Table
+# Any leftover checkpoints from aborted invocations?
+Get-ChildItem "C:\Users\Egor Sokolov\Documents\REAPER Media\benchmark-checkpoint-*.json" -ErrorAction SilentlyContinue
 
-# Count final reports generated tonight
-(Get-ChildItem "C:\Users\Egor Sokolov\Documents\REAPER Media\benchmark-results-20260423-*.json" -ErrorAction SilentlyContinue).Count
+# Current store settings snapshot (to verify daily-use config still intact)
+Get-Content "$env:APPDATA\com.handy.app\settings_store.json" -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json | Select-Object -ExpandProperty settings | Select-Object selected_model, selected_language, transcription_prompt, custom_words, whisper_anti_hallucination, whisper_sot_lang_tokens
 ```
 
-### If crash mid-night:
-1. Launch `D:\h\release\handy.exe` (NOT via tauri dev — release has /O2 fix and devtools feature)
-2. F12 → Console → paste the entire `night-run-queue.js` content again (no edits needed — DRY_RUN is already `false`, resume_from is set for every invocation)
-3. Runner skips all completed runs, continues from first incomplete one
+(The store path may vary — check `%APPDATA%\com.handy.app\` or look up via Handy logs.)
 
 ## File paths for next agent
 
