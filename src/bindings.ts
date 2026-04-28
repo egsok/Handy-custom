@@ -77,6 +77,14 @@ async changeTranslateToEnglishSetting(enabled: boolean) : Promise<Result<null, s
     else return { status: "error", error: e  as any };
 }
 },
+async changeWhisperAntiHallucinationSetting(enabled: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("change_whisper_anti_hallucination_setting", { enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async changeSelectedLanguageSetting(language: string) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("change_selected_language_setting", { language }) };

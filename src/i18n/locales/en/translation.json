@@ -335,6 +335,10 @@
         "description": "Automatically translate speech from other languages to English during transcription.",
         "descriptionUnsupported": "Translation is not supported by the {{model}} model."
       },
+      "whisperAntiHallucination": {
+        "label": "Anti-hallucination (Whisper)",
+        "description": "Caps cross-segment context (n_max_text_ctx=128) and drops low-confidence segments (entropy_thold=2.8). Reduces repetition loops and made-up phrases on long Whisper transcriptions. No-op for non-Whisper engines."
+      },
       "modelUnload": {
         "title": "Unload Model",
         "description": "Automatically free GPU/CPU memory when the model hasn't been used for the specified time",

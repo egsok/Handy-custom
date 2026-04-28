@@ -333,6 +333,7 @@ pub fn run(cli_args: CliArgs) {
             shortcut::change_start_hidden_setting,
             shortcut::change_autostart_setting,
             shortcut::change_translate_to_english_setting,
+            shortcut::change_whisper_anti_hallucination_setting,
             shortcut::change_selected_language_setting,
             shortcut::change_overlay_position_setting,
             shortcut::change_debug_mode_setting,
@@ -526,6 +527,14 @@ pub fn run(cli_args: CliArgs) {
             }
 
             win_builder.build()?;
+
+            // TEMPORARY: auto-open DevTools on startup for benchmark/night-run
+            // work. Only compiles when tauri's `devtools` feature is enabled in
+            // Cargo.toml (which is itself TEMPORARY — see cleanup note there).
+            // Revert this block when the tauri/devtools feature is removed.
+            if let Some(main_window) = app.get_webview_window("main") {
+                main_window.open_devtools();
+            }
 
             let mut settings = get_settings(&app.handle());
 
