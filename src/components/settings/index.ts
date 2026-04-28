@@ -20,6 +20,7 @@ export { HandyKeysShortcutInput } from "./HandyKeysShortcutInput";
 export { ShortcutInput } from "./ShortcutInput";
 export { TranslateToEnglish } from "./TranslateToEnglish";
 export { WhisperAntiHallucination } from "./WhisperAntiHallucination";
+export { WhisperSotLangTokens } from "./WhisperSotLangTokens";
 export { CustomWords } from "./CustomWords";
 export { PostProcessingToggle } from "./PostProcessingToggle";
 export { PostProcessingSettingsApi } from "./PostProcessingSettingsApi";

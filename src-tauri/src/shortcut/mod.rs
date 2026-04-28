@@ -671,6 +671,23 @@ pub fn update_transcription_prompt(app: AppHandle, prompt: Option<String>) -> Re
 
 #[tauri::command]
 #[specta::specta]
+pub fn update_whisper_sot_lang_tokens(
+    app: AppHandle,
+    tokens: Option<Vec<String>>,
+) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    // Empty list normalises to None (= auto-LID), so passing [] from the UI
+    // disables the Peng-style hack cleanly.
+    settings.whisper_sot_lang_tokens = match tokens {
+        Some(v) if !v.is_empty() => Some(v),
+        _ => None,
+    };
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn change_word_correction_threshold_setting(
     app: AppHandle,
     threshold: f64,

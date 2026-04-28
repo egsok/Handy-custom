@@ -5,6 +5,7 @@ import { ModelUnloadTimeoutSetting } from "../ModelUnloadTimeout";
 import { CustomWords } from "../CustomWords";
 import { TranscriptionPrompt } from "../TranscriptionPrompt";
 import { WhisperAntiHallucination } from "../WhisperAntiHallucination";
+import { WhisperSotLangTokens } from "../WhisperSotLangTokens";
 import { SettingsGroup } from "../../ui/SettingsGroup";
 import { StartHidden } from "../StartHidden";
 import { AutostartToggle } from "../AutostartToggle";
@@ -50,6 +51,7 @@ export const AdvancedSettings: React.FC = () => {
         <CustomWords descriptionMode="tooltip" grouped />
         <TranscriptionPrompt descriptionMode="tooltip" grouped />
         <WhisperAntiHallucination descriptionMode="tooltip" grouped={true} />
+        <WhisperSotLangTokens descriptionMode="tooltip" grouped={true} />
         <AppendTrailingSpace descriptionMode="tooltip" grouped={true} />
       </SettingsGroup>
 

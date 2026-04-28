@@ -339,6 +339,20 @@
         "label": "Anti-hallucination (Whisper)",
         "description": "Caps cross-segment context (n_max_text_ctx=128) and drops low-confidence segments (entropy_thold=2.8). Reduces repetition loops and made-up phrases on long Whisper transcriptions. No-op for non-Whisper engines."
       },
+      "whisperSotLangTokens": {
+        "title": "LID hack (Whisper)",
+        "description": "Constrains the Whisper decoder's Start-of-Transcript prompt to specific languages, biasing it toward better code-switching. Empty = automatic language detection (default). Whisper-only.",
+        "placeholder": "ru, en",
+        "hint": "Comma-separated ISO 639-1 codes (e.g. ru, en). Order matters: first is primary.",
+        "presets": {
+          "label": "Preset",
+          "off": "Off (auto)",
+          "ruEn": "ru, en",
+          "enRu": "en, ru",
+          "ruEnZh": "ru, en, zh",
+          "custom": "Custom"
+        }
+      },
       "modelUnload": {
         "title": "Unload Model",
         "description": "Automatically free GPU/CPU memory when the model hasn't been used for the specified time",

@@ -288,6 +288,14 @@ async updateTranscriptionPrompt(prompt: string | null) : Promise<Result<null, st
     else return { status: "error", error: e  as any };
 }
 },
+async updateWhisperSotLangTokens(tokens: string[] | null) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_whisper_sot_lang_tokens", { tokens }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 /**
  * Temporarily unregister a binding while the user is editing it in the UI.
  * This avoids firing the action while keys are being recorded.

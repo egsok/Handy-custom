@@ -119,6 +119,8 @@ const settingUpdaters: {
   custom_words: (value) => commands.updateCustomWords(value as string[]),
   transcription_prompt: (value) =>
     commands.updateTranscriptionPrompt(value as string | null),
+  whisper_sot_lang_tokens: (value) =>
+    commands.updateWhisperSotLangTokens(value as string[] | null),
   word_correction_threshold: (value) =>
     commands.changeWordCorrectionThresholdSetting(value as number),
   paste_delay_ms: (value) =>
