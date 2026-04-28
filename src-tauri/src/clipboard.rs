@@ -1,8 +1,8 @@
-use arboard::Clipboard as ArboardClipboard;
 use crate::input::{self, EnigoState};
 #[cfg(target_os = "linux")]
 use crate::settings::TypingTool;
 use crate::settings::{get_settings, AutoSubmitKey, ClipboardHandling, PasteMethod};
+use arboard::Clipboard as ArboardClipboard;
 use enigo::{Direction, Enigo, Key, Keyboard};
 use log::info;
 use std::borrow::Cow;
@@ -49,7 +49,10 @@ fn save_clipboard() -> SavedClipboard {
     if let Ok(html) = clipboard.get().html() {
         if !html.is_empty() {
             let alt = clipboard.get().text().ok();
-            return SavedClipboard::Html { html, alt_text: alt };
+            return SavedClipboard::Html {
+                html,
+                alt_text: alt,
+            };
         }
     }
     match clipboard.get().text() {

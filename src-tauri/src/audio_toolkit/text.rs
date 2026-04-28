@@ -231,6 +231,45 @@ fn get_filler_words_for_language(lang: &str) -> &'static [&'static str] {
 
 static MULTI_SPACE_PATTERN: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s{2,}").unwrap());
 
+// Sentence-boundary glue patterns produced by code-switch-trained Whisper
+// models (notably Breeze ASR) on Cyrillic / mixed Cyrillic-Latin output.
+// Order matters: period-glue patterns run before case-glue patterns so the
+// inserted space doesn't trigger downstream matches on adjacent characters.
+//
+// Latin↔Latin glue is intentionally NOT covered — `iPhone`, `camelCase`,
+// `app.NET` and similar legitimate constructs would be broken.
+
+// "слово.Следующее" / "слово.Word" — Cyrillic lowercase, '.', then upper letter
+// (any script) followed by a lowercase letter (any script). The trailing-
+// lowercase guard rejects ".PDF", ".NET", ".A1".
+static GLUE_PERIOD_FROM_CYR: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"([а-яё])\.([А-ЯЁA-Z][а-яёa-z])").unwrap());
+
+// "word.Привет" — Latin lowercase, '.', then Cyrillic upper+lower. Right side
+// restricted to Cyrillic so all-Latin domains/versions stay intact ("app.NET",
+// "v1.2" — but the latter is filtered by the digit-vs-alpha class anyway).
+static GLUE_PERIOD_FROM_LAT: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"([a-z])\.([А-ЯЁ][а-яё])").unwrap());
+
+// "словоСледующее" / "словоWord" — Cyrillic lowercase glued to any-script
+// uppercase. Catches "словоUI" / "словоAPI" too, which is desired (these
+// never appear glued in legitimate text).
+static GLUE_CASE_FROM_CYR: Lazy<Regex> = Lazy::new(|| Regex::new(r"([а-яё])([А-ЯЁA-Z])").unwrap());
+
+// "wordПривет" — Latin lowercase glued to Cyrillic uppercase. Right side
+// restricted to Cyrillic so "iPhone", "camelCase", "OpenAI" stay intact.
+static GLUE_CASE_FROM_LAT: Lazy<Regex> = Lazy::new(|| Regex::new(r"([a-z])([А-ЯЁ])").unwrap());
+
+/// Insert spaces at sentence boundaries lost by code-switch-trained Whisper
+/// models. Conservative: only fires on Cyrillic-involved patterns. Designed
+/// for Breeze ASR Russian / mixed output.
+pub fn fix_word_boundary_glue(text: &str) -> String {
+    let s = GLUE_PERIOD_FROM_CYR.replace_all(text, "$1. $2");
+    let s = GLUE_PERIOD_FROM_LAT.replace_all(&s, "$1. $2");
+    let s = GLUE_CASE_FROM_CYR.replace_all(&s, "$1 $2");
+    GLUE_CASE_FROM_LAT.replace_all(&s, "$1 $2").into_owned()
+}
+
 /// Collapses repeated words (3+ repetitions) to a single instance.
 /// E.g., "wh wh wh wh" -> "wh", "I I I I" -> "I"
 fn collapse_stutters(text: &str) -> String {
@@ -548,6 +587,87 @@ mod tests {
         let custom_words = vec!["MacBook Pro".to_string()];
         let result = apply_custom_words(text, &custom_words, 0.5);
         assert!(result.contains("MacBook"));
+    }
+
+    #[test]
+    fn glue_cyr_period_cyr() {
+        assert_eq!(fix_word_boundary_glue("привет.Мир и"), "привет. Мир и");
+    }
+
+    #[test]
+    fn glue_cyr_period_lat() {
+        assert_eq!(
+            fix_word_boundary_glue("слово.Hello world"),
+            "слово. Hello world"
+        );
+    }
+
+    #[test]
+    fn glue_lat_period_cyr() {
+        assert_eq!(
+            fix_word_boundary_glue("test.Привет всем"),
+            "test. Привет всем"
+        );
+    }
+
+    #[test]
+    fn glue_cyr_case_cyr() {
+        assert_eq!(fix_word_boundary_glue("приветМир"), "привет Мир");
+    }
+
+    #[test]
+    fn glue_cyr_case_lat() {
+        assert_eq!(fix_word_boundary_glue("словоWord"), "слово Word");
+    }
+
+    #[test]
+    fn glue_lat_case_cyr() {
+        assert_eq!(fix_word_boundary_glue("wordПривет"), "word Привет");
+    }
+
+    #[test]
+    fn glue_preserves_file_extensions() {
+        assert_eq!(fix_word_boundary_glue("файл.PDF готов"), "файл.PDF готов");
+        assert_eq!(fix_word_boundary_glue("стек.NET"), "стек.NET");
+    }
+
+    #[test]
+    fn glue_preserves_lat_camel_case() {
+        assert_eq!(
+            fix_word_boundary_glue("на iPhone и iPad"),
+            "на iPhone и iPad"
+        );
+        assert_eq!(
+            fix_word_boundary_glue("OpenAI и Anthropic"),
+            "OpenAI и Anthropic"
+        );
+    }
+
+    #[test]
+    fn glue_preserves_lat_period_lat() {
+        assert_eq!(fix_word_boundary_glue("версия app.NET"), "версия app.NET");
+    }
+
+    #[test]
+    fn glue_preserves_lowercase_domains() {
+        assert_eq!(
+            fix_word_boundary_glue("сайтмосквы.рф открыт"),
+            "сайтмосквы.рф открыт"
+        );
+    }
+
+    #[test]
+    fn glue_preserves_cyrillic_initials() {
+        assert_eq!(
+            fix_word_boundary_glue("И.О.Петров вошёл"),
+            "И.О.Петров вошёл"
+        );
+    }
+
+    #[test]
+    fn glue_idempotent_on_clean_text() {
+        let clean = "Это нормальный текст. Без проблем.";
+        assert_eq!(fix_word_boundary_glue(clean), clean);
     }
 
     #[test]

@@ -1,4 +1,6 @@
-use crate::audio_toolkit::{apply_custom_words, filter_transcription_output};
+use crate::audio_toolkit::{
+    apply_custom_words, filter_transcription_output, fix_word_boundary_glue,
+};
 use crate::managers::audio::AudioRecordingManager;
 use crate::managers::model::{EngineType, ModelManager};
 use crate::settings::{
@@ -625,18 +627,19 @@ impl TranscriptionManager {
                                     .and_then(|codes| {
                                         let resolved: Vec<i32> = codes
                                             .iter()
-                                            .filter_map(|c| {
-                                                whisper_engine.ctx_lang_token_id(c)
-                                            })
+                                            .filter_map(|c| whisper_engine.ctx_lang_token_id(c))
                                             .collect();
                                         (!resolved.is_empty()).then_some(resolved)
                                     }),
                                 ..Default::default()
                             };
 
-                            let result = whisper_engine
-                                .transcribe_with(&audio, &params)
-                                .map_err(|e| anyhow::anyhow!("Whisper transcription failed: {}", e));
+                            let result =
+                                whisper_engine
+                                    .transcribe_with(&audio, &params)
+                                    .map_err(|e| {
+                                        anyhow::anyhow!("Whisper transcription failed: {}", e)
+                                    });
                             // LID-hack provenance: read back the SOT prompt_init
                             // whisper.cpp actually used, so benchmark.rs can stamp
                             // the record with decoder-layer evidence (not just the
@@ -793,9 +796,19 @@ impl TranscriptionManager {
             result.text
         };
 
+        // Breeze ASR's Mandarin code-switch training glues sentence boundaries
+        // on Cyrillic and Cyrillic↔Latin output. Run unglue BEFORE filler
+        // filtering so word-boundary regexes inside filter_transcription_output
+        // match correctly on what would otherwise be a single token.
+        let unglued_result = if settings.selected_model == "breeze-asr" {
+            fix_word_boundary_glue(&corrected_result)
+        } else {
+            corrected_result
+        };
+
         // Filter out filler words and hallucinations
         let filtered_result = filter_transcription_output(
-            &corrected_result,
+            &unglued_result,
             &settings.app_language,
             &settings.custom_filler_words,
         );
@@ -844,7 +857,10 @@ impl TranscriptionManager {
         let st = std::time::Instant::now();
 
         if audio.is_empty() {
-            return Ok(LongFormResult { text: String::new(), chunk_count: 0 });
+            return Ok(LongFormResult {
+                text: String::new(),
+                chunk_count: 0,
+            });
         }
 
         // Non-Whisper long-form path never touches the Whisper engine, so make
@@ -870,13 +886,20 @@ impl TranscriptionManager {
             .unwrap_or(false);
         if is_whisper {
             let text = self.transcribe(audio)?;
-            return Ok(LongFormResult { text, chunk_count: 1 });
+            return Ok(LongFormResult {
+                text,
+                chunk_count: 1,
+            });
         }
 
         let mut engine_guard = self.lock_engine();
         let mut engine = match engine_guard.take() {
             Some(e) => e,
-            None => return Err(anyhow::anyhow!("Model is not loaded for long-form transcription.")),
+            None => {
+                return Err(anyhow::anyhow!(
+                    "Model is not loaded for long-form transcription."
+                ))
+            }
         };
         drop(engine_guard);
 
@@ -968,7 +991,10 @@ impl TranscriptionManager {
                 };
                 error!("Long-form transcription engine panicked: {}", msg);
                 {
-                    let mut current = self.current_model_id.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut current = self
+                        .current_model_id
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
                     *current = None;
                 }
                 let _ = self.app_handle.emit(
