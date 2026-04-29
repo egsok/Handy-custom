@@ -253,18 +253,20 @@ static GLUE_PERIOD_FROM_CYR: Lazy<Regex> =
 static GLUE_PERIOD_FROM_CYR_SHORT: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"([а-яё])\.([А-ЯЁA-Z])\b").unwrap());
 
-// "word.Привет" — Latin lowercase, '.', then Cyrillic upper+lower. Right side
-// restricted to Cyrillic so all-Latin domains/versions stay intact ("app.NET",
-// "v1.2" — but the latter is filtered by the digit-vs-alpha class anyway).
+// "word.Привет" / "STT.Можем" — Latin letter (any case), '.', then Cyrillic
+// upper+lower. Right side restricted to Cyrillic so all-Latin domains/versions
+// stay intact ("app.NET", "PDF.NET", "API.SDK", "v1.2"). Uppercase left covers
+// sentence-ending acronyms like "STT.Можем" / "API.Это" — common in code-switch
+// ASR output.
 static GLUE_PERIOD_FROM_LAT: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"([a-z])\.([А-ЯЁ][а-яё])").unwrap());
+    Lazy::new(|| Regex::new(r"([a-zA-Z])\.([А-ЯЁ][а-яё])").unwrap());
 
-// "done.А" / "test.И" — Latin lowercase, '.', then a single Cyrillic uppercase
-// followed by word boundary. Right side stays Cyrillic-only (single Latin
-// uppercase after Latin period — like `app.A` — would create too many false
-// positives in version strings / acronyms).
+// "done.А" / "API.Я" — Latin letter (any case), '.', then a single Cyrillic
+// uppercase followed by word boundary. Right side stays Cyrillic-only (single
+// Latin uppercase after Latin period — like `app.A` — would create too many
+// false positives in version strings / acronyms).
 static GLUE_PERIOD_FROM_LAT_SHORT: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"([a-z])\.([А-ЯЁ])\b").unwrap());
+    Lazy::new(|| Regex::new(r"([a-zA-Z])\.([А-ЯЁ])\b").unwrap());
 
 // "словоСледующее" / "словоWord" — Cyrillic lowercase glued to any-script
 // uppercase. Catches "словоUI" / "словоAPI" too, which is desired (these
@@ -729,6 +731,37 @@ mod tests {
         // but re-asserted here under the SHORT-pattern regression scope.
         assert_eq!(fix_word_boundary_glue("файл.PDF"), "файл.PDF");
         assert_eq!(fix_word_boundary_glue("стек.NET"), "стек.NET");
+    }
+
+    #[test]
+    fn glue_uppercase_lat_period_cyr() {
+        // Sentence ends with an uppercase-Latin acronym, next sentence starts
+        // with a Cyrillic capital. Common in code-switch ASR output.
+        assert_eq!(
+            fix_word_boundary_glue("Google Chirp 3 STT.Можем ли"),
+            "Google Chirp 3 STT. Можем ли"
+        );
+        assert_eq!(
+            fix_word_boundary_glue("использую API.Это инструмент"),
+            "использую API. Это инструмент"
+        );
+    }
+
+    #[test]
+    fn glue_uppercase_lat_period_single_cyr_letter() {
+        // Same boundary, single-letter Cyrillic word right after the period.
+        assert_eq!(
+            fix_word_boundary_glue("через API.Я думал"),
+            "через API. Я думал"
+        );
+    }
+
+    #[test]
+    fn glue_uppercase_lat_period_cyr_does_not_break_lat_lat() {
+        // Right side is Latin → rule must not fire. Regression guard for the
+        // [a-z]→[a-zA-Z] widening of GLUE_PERIOD_FROM_LAT{,_SHORT}.
+        assert_eq!(fix_word_boundary_glue("PDF.NET"), "PDF.NET");
+        assert_eq!(fix_word_boundary_glue("API.SDK"), "API.SDK");
     }
 
     #[test]
