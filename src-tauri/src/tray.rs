@@ -177,6 +177,25 @@ pub fn update_tray_menu(app: &AppHandle, state: &TrayIconState, locale: Option<&
     )
     .expect("failed to create unload model item");
 
+    // Recovery actions for diagnosing/fixing the "hotkey не срабатывает"
+    // intermittent bug. See plan: hotkey debug session.
+    let force_reset_i = MenuItem::with_id(
+        app,
+        "force_reset_pipeline",
+        &strings.force_reset_pipeline,
+        true,
+        None::<&str>,
+    )
+    .expect("failed to create force reset pipeline item");
+    let re_register_i = MenuItem::with_id(
+        app,
+        "re_register_hotkeys",
+        &strings.re_register_hotkeys,
+        true,
+        None::<&str>,
+    )
+    .expect("failed to create re-register hotkeys item");
+
     let menu = match state {
         TrayIconState::Recording | TrayIconState::Transcribing => {
             let cancel_i = MenuItem::with_id(app, "cancel", &strings.cancel, true, None::<&str>)
@@ -187,6 +206,8 @@ pub fn update_tray_menu(app: &AppHandle, state: &TrayIconState, locale: Option<&
                     &version_i,
                     &separator(),
                     &cancel_i,
+                    &force_reset_i,
+                    &re_register_i,
                     &separator(),
                     &copy_last_transcript_i,
                     &separator(),
@@ -207,6 +228,9 @@ pub fn update_tray_menu(app: &AppHandle, state: &TrayIconState, locale: Option<&
                 &separator(),
                 &model_submenu,
                 &unload_model_i,
+                &separator(),
+                &force_reset_i,
+                &re_register_i,
                 &separator(),
                 &settings_i,
                 &check_updates_i,

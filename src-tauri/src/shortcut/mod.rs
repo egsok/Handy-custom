@@ -92,6 +92,26 @@ pub fn unregister_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<
     }
 }
 
+/// Force-reinitialize all shortcuts. For HandyKeys this tears down the OS
+/// hook and reinstalls it; for Tauri it unregisters all current bindings and
+/// re-runs init. Used by the "Re-register Hotkeys" tray recovery action.
+pub fn force_reinit(app: &AppHandle) -> Result<(), String> {
+    info!("Force-reinitializing shortcuts");
+    let settings = get_settings(app);
+    match settings.keyboard_implementation {
+        KeyboardImplementation::Tauri => {
+            #[cfg(not(target_os = "linux"))]
+            {
+                use tauri_plugin_global_shortcut::GlobalShortcutExt;
+                let _ = app.global_shortcut().unregister_all();
+            }
+            tauri_impl::init_shortcuts(app);
+            Ok(())
+        }
+        KeyboardImplementation::HandyKeys => handy_keys::force_reinit(app),
+    }
+}
+
 // ============================================================================
 // Binding Management Commands
 // ============================================================================

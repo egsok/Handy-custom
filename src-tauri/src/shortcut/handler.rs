@@ -3,7 +3,7 @@
 //! This module contains the common logic for handling shortcut events,
 //! used by both the Tauri and handy-keys implementations.
 
-use log::warn;
+use log::{info, warn};
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
@@ -32,6 +32,11 @@ pub fn handle_shortcut_event(
     hotkey_string: &str,
     is_pressed: bool,
 ) {
+    info!(
+        "shortcut event: binding={}, hotkey={}, pressed={}",
+        binding_id, hotkey_string, is_pressed
+    );
+
     let settings = get_settings(app);
 
     // Transcribe bindings are handled by the coordinator.

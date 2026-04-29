@@ -5,7 +5,7 @@ pub mod models;
 pub mod transcription;
 
 use crate::settings::{get_settings, write_settings, AppSettings, LogLevel};
-use crate::utils::cancel_current_operation;
+use crate::utils::{cancel_current_operation, force_reset_to_idle};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_opener::OpenerExt;
 
@@ -184,5 +184,30 @@ pub fn initialize_shortcuts(app: AppHandle) -> Result<(), String> {
     app.manage(ShortcutsInitialized);
 
     log::info!("Shortcuts initialized successfully");
+    Ok(())
+}
+
+/// Recovery: force the transcription pipeline back to Idle, even if it's
+/// stuck in `Processing`. Triggered by the "Force Reset Pipeline" tray item.
+#[tauri::command]
+#[specta::specta]
+pub fn force_coordinator_reset(app: AppHandle) -> Result<(), String> {
+    log::info!("force_coordinator_reset called");
+    force_reset_to_idle(&app);
+    Ok(())
+}
+
+/// Recovery: tear down the keyboard hook and reinstall it, then re-register
+/// all shortcut bindings. Triggered by the "Re-register Hotkeys" tray item.
+#[tauri::command]
+#[specta::specta]
+pub fn force_reinit_shortcuts(app: AppHandle) -> Result<(), String> {
+    let start = std::time::Instant::now();
+    log::info!("force_reinit_shortcuts called");
+    crate::shortcut::force_reinit(&app)?;
+    log::info!(
+        "force_reinit_shortcuts completed in {}ms",
+        start.elapsed().as_millis()
+    );
     Ok(())
 }

@@ -41,6 +41,32 @@ pub fn cancel_current_operation(app: &AppHandle) {
     info!("Operation cancellation completed - returned to idle state");
 }
 
+/// Recovery action for the case when the transcription pipeline gets stuck
+/// in `Processing` (transcribe-paste async task not returning, e.g. on a
+/// long-form recording). Mirrors `cancel_current_operation` but sends
+/// `force_idle()` to the coordinator instead of `notify_cancel`, bypassing
+/// the Processing-state guard.
+pub fn force_reset_to_idle(app: &AppHandle) {
+    info!("Force-resetting pipeline to Idle...");
+
+    shortcut::unregister_cancel_shortcut(app);
+
+    let audio_manager = app.state::<Arc<AudioRecordingManager>>();
+    audio_manager.cancel_recording();
+
+    change_tray_icon(app, crate::tray::TrayIconState::Idle);
+    hide_recording_overlay(app);
+
+    let tm = app.state::<Arc<TranscriptionManager>>();
+    tm.maybe_unload_immediately("force-reset");
+
+    if let Some(coordinator) = app.try_state::<TranscriptionCoordinator>() {
+        coordinator.force_idle();
+    }
+
+    info!("Force reset completed - pipeline is Idle");
+}
+
 /// Check if using the Wayland display server protocol
 #[cfg(target_os = "linux")]
 pub fn is_wayland() -> bool {

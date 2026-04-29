@@ -110,14 +110,29 @@ impl HandyKeysState {
     fn manager_thread(cmd_rx: Receiver<ManagerCommand>, app: AppHandle) {
         info!("handy-keys manager thread started");
 
-        // Create the HotkeyManager in this thread
+        // Time HotkeyManager creation — this is when the OS-level
+        // WH_KEYBOARD_LL hook actually gets installed on Windows. Before this
+        // returns, hotkey events from the OS are lost. See debug plan: hotkey
+        // "не срабатывает сразу после рестарта" diagnosis.
+        let hotkey_init_start = std::time::Instant::now();
         let manager = match HotkeyManager::new_with_blocking() {
-            Ok(m) => m,
+            Ok(m) => {
+                info!(
+                    "handy-keys: HotkeyManager (WH_KEYBOARD_LL hook) ready in {}ms",
+                    hotkey_init_start.elapsed().as_millis()
+                );
+                m
+            }
             Err(e) => {
                 error!("Failed to create HotkeyManager: {}", e);
                 return;
             }
         };
+
+        // One-shot flag: log the very first hook event with timing relative
+        // to manager init, to detect the gap between "hook ready" and "events
+        // actually flowing". Subsequent events use the per-event debug log.
+        let mut first_event_logged = false;
 
         // Maps binding IDs to HotkeyIds and hotkey strings
         let mut binding_to_hotkey: HashMap<String, HotkeyId> = HashMap::new();
@@ -127,6 +142,16 @@ impl HandyKeysState {
             // Check for hotkey events (non-blocking)
             while let Some(event) = manager.try_recv() {
                 if let Some((binding_id, hotkey_string)) = hotkey_to_binding.get(&event.id) {
+                    if !first_event_logged {
+                        info!(
+                            "handy-keys: first hook event received {}ms after init start \
+                             (binding={}, hotkey={})",
+                            hotkey_init_start.elapsed().as_millis(),
+                            binding_id,
+                            hotkey_string
+                        );
+                        first_event_logged = true;
+                    }
                     debug!(
                         "handy-keys event: binding={}, hotkey={}, state={:?}",
                         binding_id, hotkey_string, event.state
@@ -241,6 +266,51 @@ impl HandyKeysState {
 
         rx.recv()
             .map_err(|_| "Failed to receive register response")?
+    }
+
+    /// Tear down the current manager thread (and its OS hook) and spawn a new
+    /// one. This is the recovery path when the WH_KEYBOARD_LL hook gets killed
+    /// by Windows (e.g. callback timeout exceeded LowLevelHooksTimeout) and
+    /// no longer fires events. After this returns, all bindings need to be
+    /// re-registered via `register()` since the new manager thread starts
+    /// with empty maps.
+    pub fn reinstall_hook(&self, app: AppHandle) -> Result<(), String> {
+        info!("HandyKeysState: reinstalling hook (tearing down old manager thread)");
+
+        // Send Shutdown to old manager thread
+        if let Ok(sender) = self.command_sender.lock() {
+            let _ = sender.send(ManagerCommand::Shutdown);
+        }
+
+        // Join old thread (may block briefly while it processes remaining
+        // events and shuts down)
+        let old_handle = self
+            .thread_handle
+            .lock()
+            .ok()
+            .and_then(|mut g| g.take());
+        if let Some(handle) = old_handle {
+            let _ = handle.join();
+        }
+
+        // Spawn fresh manager thread (this re-installs the OS hook via
+        // `HotkeyManager::new_with_blocking()` on the new thread)
+        let (new_tx, new_rx) = mpsc::channel::<ManagerCommand>();
+        let app_clone = app.clone();
+        let new_handle = thread::spawn(move || {
+            Self::manager_thread(new_rx, app_clone);
+        });
+
+        // Replace command_sender + thread_handle in place
+        if let Ok(mut sender_guard) = self.command_sender.lock() {
+            *sender_guard = new_tx;
+        }
+        if let Ok(mut handle_guard) = self.thread_handle.lock() {
+            *handle_guard = Some(new_handle);
+        }
+
+        info!("HandyKeysState: hook reinstalled (new manager thread spawned)");
+        Ok(())
     }
 
     /// Unregister a shortcut binding
@@ -419,6 +489,48 @@ pub fn validate_shortcut(raw: &str) -> Result<(), String> {
     raw.parse::<Hotkey>()
         .map(|_| ())
         .map_err(|e| format!("Invalid shortcut for HandyKeys: {}", e))
+}
+
+/// Force-reinitialize handy-keys shortcuts: tears down the worker thread,
+/// reinstalls the OS hook, then re-registers all configured bindings.
+/// Used by the "Re-register Hotkeys" tray recovery action when the hook
+/// has gotten into a stuck state.
+pub fn force_reinit(app: &AppHandle) -> Result<(), String> {
+    let Some(state) = app.try_state::<HandyKeysState>() else {
+        // No existing state — fall back to fresh init
+        return init_shortcuts(app);
+    };
+
+    state.reinstall_hook(app.clone())?;
+
+    // Re-register all bindings on the freshly-spawned manager thread
+    let default_bindings = settings::get_default_settings().bindings;
+    let user_settings = settings::load_or_create_app_settings(app);
+
+    for (id, default_binding) in default_bindings {
+        if id == "cancel" {
+            continue;
+        }
+        if id == "transcribe_with_post_process" && !user_settings.post_process_enabled {
+            continue;
+        }
+
+        let binding = user_settings
+            .bindings
+            .get(&id)
+            .cloned()
+            .unwrap_or(default_binding);
+
+        if let Err(e) = state.register(&binding) {
+            error!(
+                "Failed to re-register handy-keys shortcut {} after reinit: {}",
+                id, e
+            );
+        }
+    }
+
+    info!("handy-keys shortcuts re-initialized");
+    Ok(())
 }
 
 /// Initialize handy-keys shortcuts

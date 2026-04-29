@@ -235,6 +235,22 @@ fn initialize_core_logic(app_handle: &AppHandle) {
                 // Use centralized cancellation that handles all operations
                 cancel_current_operation(app);
             }
+            "force_reset_pipeline" => {
+                use crate::utils::force_reset_to_idle;
+                log::info!("Tray: Force Reset Pipeline clicked");
+                force_reset_to_idle(app);
+            }
+            "re_register_hotkeys" => {
+                log::info!("Tray: Re-register Hotkeys clicked");
+                let app_clone = app.clone();
+                // Run on a worker thread so we don't block the tray menu callback
+                // (reinstall waits on the old manager thread to join, ~10-100ms).
+                std::thread::spawn(move || {
+                    if let Err(e) = crate::shortcut::force_reinit(&app_clone) {
+                        log::error!("Tray re-register failed: {}", e);
+                    }
+                });
+            }
             "quit" => {
                 app.exit(0);
             }
@@ -392,6 +408,8 @@ pub fn run(cli_args: CliArgs) {
             commands::check_apple_intelligence_available,
             commands::initialize_enigo,
             commands::initialize_shortcuts,
+            commands::force_coordinator_reset,
+            commands::force_reinit_shortcuts,
             commands::models::get_available_models,
             commands::models::get_model_info,
             commands::models::download_model,
