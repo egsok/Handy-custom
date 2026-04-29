@@ -245,11 +245,26 @@ static MULTI_SPACE_PATTERN: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s{2,}").unw
 static GLUE_PERIOD_FROM_CYR: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"([а-яё])\.([А-ЯЁA-Z][а-яёa-z])").unwrap());
 
+// "предложение.Я" — Cyrillic lowercase, '.', then a single uppercase letter
+// (Cyrillic or Latin) followed by a word boundary. Catches one-letter
+// sentence-starters like Я, И, А, О, В, С, У, К in Russian (or English "A",
+// "I" in code-switch). The `\b` requirement is what keeps file extensions
+// like `.PDF` / `.NET` safe — there `\b` does NOT match between two letters.
+static GLUE_PERIOD_FROM_CYR_SHORT: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"([а-яё])\.([А-ЯЁA-Z])\b").unwrap());
+
 // "word.Привет" — Latin lowercase, '.', then Cyrillic upper+lower. Right side
 // restricted to Cyrillic so all-Latin domains/versions stay intact ("app.NET",
 // "v1.2" — but the latter is filtered by the digit-vs-alpha class anyway).
 static GLUE_PERIOD_FROM_LAT: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"([a-z])\.([А-ЯЁ][а-яё])").unwrap());
+
+// "done.А" / "test.И" — Latin lowercase, '.', then a single Cyrillic uppercase
+// followed by word boundary. Right side stays Cyrillic-only (single Latin
+// uppercase after Latin period — like `app.A` — would create too many false
+// positives in version strings / acronyms).
+static GLUE_PERIOD_FROM_LAT_SHORT: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"([a-z])\.([А-ЯЁ])\b").unwrap());
 
 // "словоСледующее" / "словоWord" — Cyrillic lowercase glued to any-script
 // uppercase. Catches "словоUI" / "словоAPI" too, which is desired (these
@@ -265,7 +280,9 @@ static GLUE_CASE_FROM_LAT: Lazy<Regex> = Lazy::new(|| Regex::new(r"([a-z])([А-�
 /// for Breeze ASR Russian / mixed output.
 pub fn fix_word_boundary_glue(text: &str) -> String {
     let s = GLUE_PERIOD_FROM_CYR.replace_all(text, "$1. $2");
+    let s = GLUE_PERIOD_FROM_CYR_SHORT.replace_all(&s, "$1. $2");
     let s = GLUE_PERIOD_FROM_LAT.replace_all(&s, "$1. $2");
+    let s = GLUE_PERIOD_FROM_LAT_SHORT.replace_all(&s, "$1. $2");
     let s = GLUE_CASE_FROM_CYR.replace_all(&s, "$1 $2");
     GLUE_CASE_FROM_LAT.replace_all(&s, "$1 $2").into_owned()
 }
@@ -668,6 +685,50 @@ mod tests {
     fn glue_idempotent_on_clean_text() {
         let clean = "Это нормальный текст. Без проблем.";
         assert_eq!(fix_word_boundary_glue(clean), clean);
+    }
+
+    #[test]
+    fn glue_cyr_period_single_letter_word() {
+        // Regression: "предложение.Я думал" — single-letter Cyrillic word
+        // after the period was previously missed because pattern 1a required
+        // a trailing lowercase letter. Pattern 1b (\b) catches this.
+        assert_eq!(
+            fix_word_boundary_glue("предложение.Я думал"),
+            "предложение. Я думал"
+        );
+        assert_eq!(
+            fix_word_boundary_glue("работает.И завтра"),
+            "работает. И завтра"
+        );
+        assert_eq!(
+            fix_word_boundary_glue("вышло.А вот"),
+            "вышло. А вот"
+        );
+    }
+
+    #[test]
+    fn glue_cyr_period_single_letter_at_eol() {
+        assert_eq!(
+            fix_word_boundary_glue("конец.Я."),
+            "конец. Я."
+        );
+    }
+
+    #[test]
+    fn glue_lat_period_single_cyr_letter() {
+        assert_eq!(
+            fix_word_boundary_glue("done.А завтра"),
+            "done. А завтра"
+        );
+    }
+
+    #[test]
+    fn glue_short_does_not_break_extensions() {
+        // PDF/NET have multi-letter all-uppercase, so \b doesn't fire after
+        // the first letter. Already covered by glue_preserves_file_extensions
+        // but re-asserted here under the SHORT-pattern regression scope.
+        assert_eq!(fix_word_boundary_glue("файл.PDF"), "файл.PDF");
+        assert_eq!(fix_word_boundary_glue("стек.NET"), "стек.NET");
     }
 
     #[test]
