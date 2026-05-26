@@ -112,6 +112,14 @@ transcribe-rs = { version = "0.3.3", features = ["whisper-vulkan"] }
 tauri-runtime = { git = "https://github.com/cjpais/tauri.git", branch = "handy-2.10.2" }
 tauri-runtime-wry = { git = "https://github.com/cjpais/tauri.git", branch = "handy-2.10.2" }
 tauri-utils = { git = "https://github.com/cjpais/tauri.git", branch = "handy-2.10.2" }
+# Local forks on daily-stable branches (LID instrumentation removed).
+# transcribe-rs daily-stable: vanilla 0.3.8 + n_max_text_ctx/entropy_thold fields
+# for anti-hallucination protection (OpenWhispr PR #552 equivalent).
+transcribe-rs = { path = "../../transcribe-rs-fork" }
+# whisper-rs daily-stable: vanilla + repoint to sys-fork (no LID FFI wrappers).
+# whisper-rs-sys daily-stable: vanilla 0.15.0 + /O2 fix for cmake 4.2.3+ MSVC.
+whisper-rs = { path = "../../whisper-rs-fork" }
+whisper-rs-sys = { path = "../../whisper-rs-sys-fork" }
 
 [dev-dependencies]
 tempfile = "3"
