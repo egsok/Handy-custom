@@ -7698,7 +7698,7 @@ dependencies = [
 
 [[package]]
 name = "whisper-rs-sys"
-version = "0.15.1-lid-hack.3"
+version = "0.15.1-lid-hack.4"
 dependencies = [
  "bindgen",
  "cfg-if",

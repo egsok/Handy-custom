@@ -27,74 +27,419 @@ struct RunSpec {
     sot_lang_tokens: Option<&'static [&'static str]>,
 }
 
-// Superset RUN_MATRIX for the 2026-04-23 night run (Blocks A / A2 / B / C /
-// C2 / D / F / G / J). Each row is the unique (model_id, use_prompt,
-// use_anti_halluc, sot_lang_tokens) signature — the per-invocation `prompt`
-// override and `language` arg cover the remaining axes (V1/V2/V3/V4 and
-// ru/auto). Resume-key now includes effective_initial_prompt + language,
-// so the same row run with different prompts / languages is distinct.
+// Superset RUN_MATRIX for the 2026-04-23 v17 night run + v20 live_v1 R1/R2 (47 rows). Each row
+// is the unique (model_id, use_prompt, use_anti_halluc, sot_lang_tokens)
+// signature — the per-invocation `prompt` override and `language` arg cover
+// the remaining axes (V1/V2/V3/V4 and ru/auto). Resume-key now includes
+// effective_initial_prompt + language, so the same row run with different
+// prompts / languages is distinct.
 //
 // Layout: for each Whisper model, the 4 (use_prompt × ah) × sot=None combos
 // cover all "Angle C" style conditions. Extra rows for LID variants where
-// Block G and the original Phase A/1 experiments need them.
+// Block G, the original Phase A/1 experiments, and v17 P0/P1/P2 need them.
 const RUN_MATRIX: &[RunSpec] = &[
     // ==== breeze-asr (Block A / A2 / B / F / J) ====
-    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
-    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: true , use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "breeze-asr", engine_label: "whisper", use_prompt: true , use_anti_halluc: true , sot_lang_tokens: None },
-
+    RunSpec {
+        model_id: "breeze-asr",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: false,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "breeze-asr",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: true,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "breeze-asr",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: false,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "breeze-asr",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: true,
+        sot_lang_tokens: None,
+    },
+    // v17 LID variants (P0 noprompt+lid_ru+ah; P1/P2 V2/V3/V4 × lid_ru / lid_en+ru / lid_ru+en × ah).
+    RunSpec {
+        model_id: "breeze-asr",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: true,
+        sot_lang_tokens: Some(&["ru"]),
+    },
+    RunSpec {
+        model_id: "breeze-asr",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: true,
+        sot_lang_tokens: Some(&["ru"]),
+    },
+    RunSpec {
+        model_id: "breeze-asr",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: true,
+        sot_lang_tokens: Some(&["en", "ru"]),
+    },
+    RunSpec {
+        model_id: "breeze-asr",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: true,
+        sot_lang_tokens: Some(&["ru", "en"]),
+    },
+    // ==== breeze-asr-26 (MediaTek 2nd-gen Breeze; mirrors breeze-asr matrix for cross-version comparison) ====
+    RunSpec {
+        model_id: "breeze-asr-26",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: false,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "breeze-asr-26",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: true,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "breeze-asr-26",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: false,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "breeze-asr-26",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: true,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "breeze-asr-26",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: true,
+        sot_lang_tokens: Some(&["ru"]),
+    },
+    RunSpec {
+        model_id: "breeze-asr-26",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: true,
+        sot_lang_tokens: Some(&["ru"]),
+    },
+    RunSpec {
+        model_id: "breeze-asr-26",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: true,
+        sot_lang_tokens: Some(&["en", "ru"]),
+    },
+    RunSpec {
+        model_id: "breeze-asr-26",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: true,
+        sot_lang_tokens: Some(&["ru", "en"]),
+    },
     // ==== ggml-medium (Block A / A2 / B / G) ====
-    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
-    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: true , use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: true , use_anti_halluc: true , sot_lang_tokens: None },
+    RunSpec {
+        model_id: "ggml-medium",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: false,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "ggml-medium",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: true,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "ggml-medium",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: false,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "ggml-medium",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: true,
+        sot_lang_tokens: None,
+    },
     // Block G: ggml-medium noprompt+ah × LID en+ru.
-    RunSpec { model_id: "ggml-medium", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: Some(&["en", "ru"]) },
-
+    RunSpec {
+        model_id: "ggml-medium",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: true,
+        sot_lang_tokens: Some(&["en", "ru"]),
+    },
+    // v20 H22 — ggml-medium noprompt × LID ru+en + AH (live_v1 Tier 5).
+    RunSpec {
+        model_id: "ggml-medium",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: true,
+        sot_lang_tokens: Some(&["ru", "en"]),
+    },
     // ==== medium (Block B) ====
-    RunSpec { model_id: "medium", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "medium", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
-    RunSpec { model_id: "medium", engine_label: "whisper", use_prompt: true , use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "medium", engine_label: "whisper", use_prompt: true , use_anti_halluc: true , sot_lang_tokens: None },
-
+    RunSpec {
+        model_id: "medium",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: false,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "medium",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: true,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "medium",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: false,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "medium",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: true,
+        sot_lang_tokens: None,
+    },
     // ==== turbo (Block A / B) ====
-    RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
-    RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: true , use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "turbo", engine_label: "whisper", use_prompt: true , use_anti_halluc: true , sot_lang_tokens: None },
-
+    RunSpec {
+        model_id: "turbo",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: false,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "turbo",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: true,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "turbo",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: false,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "turbo",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: true,
+        sot_lang_tokens: None,
+    },
+    // v17 P2 LID variants (turbo × lid_ru).
+    RunSpec {
+        model_id: "turbo",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: true,
+        sot_lang_tokens: Some(&["ru"]),
+    },
+    RunSpec {
+        model_id: "turbo",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: true,
+        sot_lang_tokens: Some(&["ru"]),
+    },
     // ==== large (Block C / C2) ====
-    RunSpec { model_id: "large", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "large", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
-    RunSpec { model_id: "large", engine_label: "whisper", use_prompt: true , use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "large", engine_label: "whisper", use_prompt: true , use_anti_halluc: true , sot_lang_tokens: None },
-
+    RunSpec {
+        model_id: "large",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: false,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "large",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: true,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "large",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: false,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "large",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: true,
+        sot_lang_tokens: None,
+    },
     // ==== ggml-large-v3 (Block C) ====
-    RunSpec { model_id: "ggml-large-v3", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "ggml-large-v3", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
-    RunSpec { model_id: "ggml-large-v3", engine_label: "whisper", use_prompt: true , use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "ggml-large-v3", engine_label: "whisper", use_prompt: true , use_anti_halluc: true , sot_lang_tokens: None },
-
+    RunSpec {
+        model_id: "ggml-large-v3",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: false,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "ggml-large-v3",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: true,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "ggml-large-v3",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: false,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "ggml-large-v3",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: true,
+        sot_lang_tokens: None,
+    },
     // ==== whisper-large-v3-russian (Block C / C2) ====
-    RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
-    RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: true , use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "whisper-large-v3-russian", engine_label: "whisper", use_prompt: true , use_anti_halluc: true , sot_lang_tokens: None },
-
+    RunSpec {
+        model_id: "whisper-large-v3-russian",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: false,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "whisper-large-v3-russian",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: true,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "whisper-large-v3-russian",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: false,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "whisper-large-v3-russian",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: true,
+        sot_lang_tokens: None,
+    },
+    // v20 Round 2 H37 — wlv3-russian noprompt × LID ru + AH.
+    RunSpec {
+        model_id: "whisper-large-v3-russian",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: true,
+        sot_lang_tokens: Some(&["ru"]),
+    },
     // ==== whisper-podlodka-turbo (Block B / D / G) ====
-    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: None },
-    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: true , use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: true , use_anti_halluc: true , sot_lang_tokens: None },
+    RunSpec {
+        model_id: "whisper-podlodka-turbo",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: false,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "whisper-podlodka-turbo",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: true,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "whisper-podlodka-turbo",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: false,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "whisper-podlodka-turbo",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: true,
+        sot_lang_tokens: None,
+    },
     // Block G: podlodka noprompt+ah × LID variants.
-    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: Some(&["en", "ru"]) },
-    RunSpec { model_id: "whisper-podlodka-turbo", engine_label: "whisper", use_prompt: false, use_anti_halluc: true , sot_lang_tokens: Some(&["ru", "en"]) },
-
+    RunSpec {
+        model_id: "whisper-podlodka-turbo",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: true,
+        sot_lang_tokens: Some(&["en", "ru"]),
+    },
+    RunSpec {
+        model_id: "whisper-podlodka-turbo",
+        engine_label: "whisper",
+        use_prompt: false,
+        use_anti_halluc: true,
+        sot_lang_tokens: Some(&["ru", "en"]),
+    },
+    // v20 H21 — podlodka prompt × LID ru+en + AH (live_v1 Tier 5).
+    RunSpec {
+        model_id: "whisper-podlodka-turbo",
+        engine_label: "whisper",
+        use_prompt: true,
+        use_anti_halluc: true,
+        sot_lang_tokens: Some(&["ru", "en"]),
+    },
     // ==== Non-Whisper (kept for completeness; not invoked by any block below) ====
-    RunSpec { model_id: "parakeet-tdt-0.6b-v3", engine_label: "parakeet", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "canary-1b-v2", engine_label: "canary", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
-    RunSpec { model_id: "gigaam-v3-e2e-ctc", engine_label: "gigaam", use_prompt: false, use_anti_halluc: false, sot_lang_tokens: None },
+    RunSpec {
+        model_id: "parakeet-tdt-0.6b-v3",
+        engine_label: "parakeet",
+        use_prompt: false,
+        use_anti_halluc: false,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "canary-1b-v2",
+        engine_label: "canary",
+        use_prompt: false,
+        use_anti_halluc: false,
+        sot_lang_tokens: None,
+    },
+    RunSpec {
+        model_id: "gigaam-v3-e2e-ctc",
+        engine_label: "gigaam",
+        use_prompt: false,
+        use_anti_halluc: false,
+        sot_lang_tokens: None,
+    },
 ];
 
 /// Per-model maximum chunk duration for VAD-based long-form transcription
@@ -149,6 +494,11 @@ pub struct BenchmarkRunRecord {
     /// None when the engine is non-whisper, transcribe crashed before
     /// whisper.cpp assembled prompt_init, or the getter returned empty.
     decoder_prompt_init_tokens: Option<Vec<i32>>,
+    /// Bare filename of the audio file this run was transcribed from (e.g.
+    /// "live-01-3s.wav"). None in single-file mode (legacy `file_path` path);
+    /// Some(filename) in audio_batch mode. Lets the eval driver look up
+    /// per-file metadata (speaker, duration, env) without parsing run order.
+    audio_file: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Type)]
@@ -201,6 +551,21 @@ pub struct BenchmarkOverrides {
     /// skip_models / skip_no_prompt. `model_id_null_as_wildcard` is NOT a
     /// feature — explicit tuples only.
     pub only_conditions: Option<Vec<ConditionFilter>>,
+    /// When Some(non-empty list), switches benchmark to multi-file batch mode:
+    /// model loads ONCE per condition, then iterates over each file × N runs.
+    /// Each record gets `audio_file` populated with the bare filename. The
+    /// positional `file_path` arg is treated as a label only (used for
+    /// checkpoint naming and the report's `input_file` field) and its
+    /// existence is NOT checked. None or empty list → legacy single-file
+    /// mode using `file_path` as the actual audio source.
+    pub audio_batch: Option<Vec<String>>,
+    /// When Some(n), shifts run_idx numbering for this invocation: runs carry
+    /// run_idx ∈ [n, n + runs_per_condition). Used by Round 2 T3 to append 8
+    /// new runs (run_idx 12..19) to Round 1 baseline (run_idx 0..11) without
+    /// collision when the eval driver merges by (cid, audio_file, run_idx).
+    /// Default: 0. Resume-key includes run_idx as-is, so offset values survive
+    /// resume-from-checkpoint cleanly.
+    pub run_idx_offset: Option<u32>,
 }
 
 /// Single condition signature the night-run queue uses to pin an invocation
@@ -450,9 +815,7 @@ fn compute_aggregates(runs: &[BenchmarkRunRecord]) -> Vec<BenchmarkAggregate> {
             None => true,
         };
 
-        let first_error = condition_runs
-            .iter()
-            .find_map(|r| r.error.clone());
+        let first_error = condition_runs.iter().find_map(|r| r.error.clone());
 
         aggregates.push(BenchmarkAggregate {
             model_id: run.model_id.clone(),
@@ -557,11 +920,21 @@ fn build_markdown(report: &BenchmarkReport) -> String {
             anti_label,
             agg.successful_runs,
             report.runs_per_condition,
-            agg.time_min_ms.map(|v| v.to_string()).unwrap_or_else(|| "—".to_string()),
-            agg.time_median_ms.map(|v| v.to_string()).unwrap_or_else(|| "—".to_string()),
-            agg.time_mean_ms.map(|v| format!("{:.0}", v)).unwrap_or_else(|| "—".to_string()),
-            agg.time_stdev_ms.map(|v| format!("{:.0}", v)).unwrap_or_else(|| "—".to_string()),
-            agg.rtf_median.map(|v| format!("{:.3}", v)).unwrap_or_else(|| "—".to_string()),
+            agg.time_min_ms
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "—".to_string()),
+            agg.time_median_ms
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "—".to_string()),
+            agg.time_mean_ms
+                .map(|v| format!("{:.0}", v))
+                .unwrap_or_else(|| "—".to_string()),
+            agg.time_stdev_ms
+                .map(|v| format!("{:.0}", v))
+                .unwrap_or_else(|| "—".to_string()),
+            agg.rtf_median
+                .map(|v| format!("{:.3}", v))
+                .unwrap_or_else(|| "—".to_string()),
             if agg.texts_identical { "yes" } else { "no" },
         ));
     }
@@ -627,9 +1000,11 @@ fn build_markdown(report: &BenchmarkReport) -> String {
             }
         }
 
-        for r in report.runs.iter().filter(|r| {
-            r.model_id == key.0 && r.use_prompt == key.1 && r.use_anti_halluc == key.2
-        }) {
+        for r in report
+            .runs
+            .iter()
+            .filter(|r| r.model_id == key.0 && r.use_prompt == key.1 && r.use_anti_halluc == key.2)
+        {
             md.push_str(&format!("**Run {}:**\n\n", r.run_idx));
             if let Some(ref e) = r.error {
                 md.push_str(&format!("> ERROR: {}\n\n", e));
@@ -665,21 +1040,41 @@ pub async fn benchmark_transcription_file(
     let skip_no_prompt = overrides.skip_no_prompt.unwrap_or(false);
     let sot_lang_tokens_override = overrides.sot_lang_tokens.clone();
     let runs_per_condition = runs_per_condition.unwrap_or(3).max(1);
-    let skip_set: std::collections::HashSet<String> = skip_models
-        .unwrap_or_default()
-        .into_iter()
-        .collect();
+    let run_idx_offset = overrides.run_idx_offset.unwrap_or(0);
+    let skip_set: std::collections::HashSet<String> =
+        skip_models.unwrap_or_default().into_iter().collect();
     let language = language.unwrap_or_else(|| "ru".to_string());
 
+    // Batch mode: audio_batch is Some(non-empty). file_path is a label only
+    // (checkpoint naming + report input_file) — its existence is not checked.
+    // Single-file mode: file_path must exist and is loaded as the sole audio.
+    let batch_mode = overrides
+        .audio_batch
+        .as_ref()
+        .map(|v| !v.is_empty())
+        .unwrap_or(false);
+
     let input_path = PathBuf::from(&file_path);
-    if !input_path.exists() {
+    if !batch_mode && !input_path.exists() {
         return Err(format!("Input file not found: {}", file_path));
     }
 
-    let output_dir_path = input_path
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| PathBuf::from("."));
+    let output_dir_path = if batch_mode {
+        // In batch mode the label may not be a real path. Anchor checkpoints
+        // and final report next to the first batch audio file's parent (or
+        // CWD if that fails) so eval scripts can find them deterministically.
+        overrides
+            .audio_batch
+            .as_ref()
+            .and_then(|b| b.first())
+            .and_then(|p| Path::new(p).parent().map(|x| x.to_path_buf()))
+            .unwrap_or_else(|| PathBuf::from("."))
+    } else {
+        input_path
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."))
+    };
 
     // Per-input-file checkpoint paths — computed once, used per-run below.
     let (ckpt_json_path, ckpt_md_path) = checkpoint_paths(&output_dir_path, &file_path);
@@ -700,14 +1095,38 @@ pub async fn benchmark_transcription_file(
         sot_lang_tokens_override,
     );
 
-    let audio_benchmark = load_wav_mono_16k(&input_path).map_err(|e| e.to_string())?;
-    let audio_duration_s = audio_benchmark.len() as f64 / TARGET_SAMPLE_RATE as f64;
+    // Unified audio inventory: in single-file mode = 1 entry; in batch mode =
+    // N entries from overrides.audio_batch. Each entry: (audio_file label,
+    // mono 16k samples, duration_s). audio_file is None for single-file (so
+    // legacy records keep `audio_file: null`); Some(filename) for batch.
+    let audio_files: Vec<(Option<String>, Vec<f32>, f64)> = if batch_mode {
+        let batch = overrides.audio_batch.as_ref().expect("batch_mode set");
+        let mut out = Vec::with_capacity(batch.len());
+        for path in batch {
+            let p = Path::new(path);
+            let samples = load_wav_mono_16k(p)
+                .map_err(|e| format!("audio_batch file {} load failed: {}", path, e))?;
+            let dur = samples.len() as f64 / TARGET_SAMPLE_RATE as f64;
+            let fname = p
+                .file_name()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.clone());
+            out.push((Some(fname), samples, dur));
+        }
+        out
+    } else {
+        let samples = load_wav_mono_16k(&input_path).map_err(|e| e.to_string())?;
+        let dur = samples.len() as f64 / TARGET_SAMPLE_RATE as f64;
+        vec![(None, samples, dur)]
+    };
+    // Total duration across the batch (for the report's audio_duration_s
+    // header). Per-record RTF uses each file's own duration below.
+    let audio_duration_s: f64 = audio_files.iter().map(|(_, _, d)| d).sum();
 
     let audio_warmup = match &warmup_path {
-        Some(p) => Some(
-            load_wav_mono_16k(Path::new(p))
-                .map_err(|e| format!("warmup WAV failed: {}", e))?,
-        ),
+        Some(p) => {
+            Some(load_wav_mono_16k(Path::new(p)).map_err(|e| format!("warmup WAV failed: {}", e))?)
+        }
         None => None,
     };
 
@@ -741,13 +1160,14 @@ pub async fn benchmark_transcription_file(
     // `language` arg (ru vs auto are different conditions per eval.py
     // naming scheme).
     type RunKey = (
-        String,          // model_id
-        bool,            // use_prompt
-        Option<String>,  // effective_initial_prompt (distinguishes V1/V2/V3/V4 & custom_words)
-        bool,            // use_anti_halluc
+        String,              // model_id
+        bool,                // use_prompt
+        Option<String>,      // effective_initial_prompt (distinguishes V1/V2/V3/V4 & custom_words)
+        bool,                // use_anti_halluc
         Option<Vec<String>>, // sot_lang_tokens
-        String,          // language (ru / auto / en / ...)
-        u32,             // run_idx
+        String,              // language (ru / auto / en / ...)
+        Option<String>,      // audio_file (None in single-file mode; per-file in batch)
+        u32,                 // run_idx
     );
     fn run_key(r: &BenchmarkRunRecord) -> RunKey {
         (
@@ -757,6 +1177,7 @@ pub async fn benchmark_transcription_file(
             r.use_anti_halluc,
             r.sot_lang_tokens.clone(),
             r.language.clone(),
+            r.audio_file.clone(),
             r.run_idx,
         )
     }
@@ -867,38 +1288,10 @@ pub async fn benchmark_transcription_file(
             .map(|m| m.is_downloaded)
             .unwrap_or(false);
         if !is_downloaded {
-            for run_idx in 0..runs_per_condition {
-                runs.push(BenchmarkRunRecord {
-                    model_id: spec.model_id.to_string(),
-                    model_name: model_name.clone(),
-                    engine: spec.engine_label.to_string(),
-                    use_prompt: spec.use_prompt,
-                    use_anti_halluc: spec.use_anti_halluc,
-                    run_idx,
-                    language: language.clone(),
-                    translate: false,
-                    transcription_prompt: None,
-                    custom_words: vec![],
-                    transcribe_time_ms: 0,
-                    rtf: 0.0,
-                    text: String::new(),
-                    error: Some("model not downloaded".to_string()),
-                    chunk_count: 0,
-                    max_chunk_secs,
-                    sot_lang_tokens: None,
-                    effective_initial_prompt: None,
-                    effective_n_max_text_ctx: None,
-                    effective_entropy_thold: None,
-                    decoder_prompt_init_tokens: None,
-                });
-            }
-            continue;
-        }
-
-        if previous_model.as_deref() != Some(spec.model_id) {
-            info!("benchmark: switching to model {}", spec.model_id);
-            if let Err(e) = switch_active_model(&app, spec.model_id) {
-                for run_idx in 0..runs_per_condition {
+            // Stamp one error record per (audio_file, run_idx) so the eval
+            // driver can still attribute the failure per file in batch mode.
+            for (audio_filename_opt, _, _) in &audio_files {
+                for run_idx in run_idx_offset..(run_idx_offset + runs_per_condition) {
                     runs.push(BenchmarkRunRecord {
                         model_id: spec.model_id.to_string(),
                         model_name: model_name.clone(),
@@ -913,7 +1306,7 @@ pub async fn benchmark_transcription_file(
                         transcribe_time_ms: 0,
                         rtf: 0.0,
                         text: String::new(),
-                        error: Some(format!("switch_active_model failed: {}", e)),
+                        error: Some("model not downloaded".to_string()),
                         chunk_count: 0,
                         max_chunk_secs,
                         sot_lang_tokens: None,
@@ -921,7 +1314,43 @@ pub async fn benchmark_transcription_file(
                         effective_n_max_text_ctx: None,
                         effective_entropy_thold: None,
                         decoder_prompt_init_tokens: None,
+                        audio_file: audio_filename_opt.clone(),
                     });
+                }
+            }
+            continue;
+        }
+
+        if previous_model.as_deref() != Some(spec.model_id) {
+            info!("benchmark: switching to model {}", spec.model_id);
+            if let Err(e) = switch_active_model(&app, spec.model_id) {
+                for (audio_filename_opt, _, _) in &audio_files {
+                    for run_idx in run_idx_offset..(run_idx_offset + runs_per_condition) {
+                        runs.push(BenchmarkRunRecord {
+                            model_id: spec.model_id.to_string(),
+                            model_name: model_name.clone(),
+                            engine: spec.engine_label.to_string(),
+                            use_prompt: spec.use_prompt,
+                            use_anti_halluc: spec.use_anti_halluc,
+                            run_idx,
+                            language: language.clone(),
+                            translate: false,
+                            transcription_prompt: None,
+                            custom_words: vec![],
+                            transcribe_time_ms: 0,
+                            rtf: 0.0,
+                            text: String::new(),
+                            error: Some(format!("switch_active_model failed: {}", e)),
+                            chunk_count: 0,
+                            max_chunk_secs,
+                            sot_lang_tokens: None,
+                            effective_initial_prompt: None,
+                            effective_n_max_text_ctx: None,
+                            effective_entropy_thold: None,
+                            decoder_prompt_init_tokens: None,
+                            audio_file: audio_filename_opt.clone(),
+                        });
+                    }
                 }
                 continue;
             }
@@ -930,9 +1359,10 @@ pub async fn benchmark_transcription_file(
             // the ONNX engine sees an input size it can handle; warmup-file may
             // still be short enough for a single call but long-form handles both.
             let warm_audio = audio_warmup.as_ref().cloned().unwrap_or_else(|| {
-                audio_benchmark
+                let first = &audio_files[0].1;
+                first
                     .iter()
-                    .take((TARGET_SAMPLE_RATE as usize * 3).min(audio_benchmark.len()))
+                    .take((TARGET_SAMPLE_RATE as usize * 3).min(first.len()))
                     .copied()
                     .collect::<Vec<f32>>()
             });
@@ -975,9 +1405,10 @@ pub async fn benchmark_transcription_file(
         // RUN_MATRIX pass without editing the constant. When both are None
         // the existing SettingsGuard Drop still restores the pre-benchmark
         // value, so there's no permanent setting mutation.
-        s.whisper_sot_lang_tokens = sot_lang_tokens_override
-            .clone()
-            .or_else(|| spec.sot_lang_tokens.map(|a| a.iter().map(|s| s.to_string()).collect()));
+        s.whisper_sot_lang_tokens = sot_lang_tokens_override.clone().or_else(|| {
+            spec.sot_lang_tokens
+                .map(|a| a.iter().map(|s| s.to_string()).collect())
+        });
         write_settings(&app, s.clone());
 
         let applied_prompt = s.transcription_prompt.clone();
@@ -998,147 +1429,159 @@ pub async fn benchmark_transcription_file(
                 (None, None)
             };
 
-        for run_idx in 0..runs_per_condition {
-            // Resume short-circuit: skip if this full tuple is already in the
-            // seeded completed-set. The seeded run is already in `runs` and
-            // flows into the final report unchanged. Warmup has already
-            // happened for this spec — wasteful only when all runs of a spec
-            // are already done, but that's a single model-load.
-            let key: RunKey = (
-                spec.model_id.to_string(),
-                spec.use_prompt,
-                effective_initial_prompt.clone(),
-                spec.use_anti_halluc,
-                applied_sot_lang_tokens.clone(),
-                language.clone(),
-                run_idx,
-            );
-            if completed_keys.contains(&key) {
-                debug!(
-                    "benchmark: resume skip (already done) run {}/{} model={} prompt={:?} sot={:?} lang={}",
+        // Audio batch loop: each (audio_file, samples, dur) is transcribed
+        // N times before moving to the next file. Model loads ONCE per spec
+        // (above), so per-file warmup is unnecessary — model state is hot.
+        for (audio_filename_opt, audio_samples, audio_dur) in &audio_files {
+            for run_idx in run_idx_offset..(run_idx_offset + runs_per_condition) {
+                // Resume short-circuit: skip if this full tuple is already in the
+                // seeded completed-set. Audio file is part of the key so the
+                // same (spec, run_idx) on different audio files counts as
+                // distinct work units.
+                let key: RunKey = (
+                    spec.model_id.to_string(),
+                    spec.use_prompt,
+                    effective_initial_prompt.clone(),
+                    spec.use_anti_halluc,
+                    applied_sot_lang_tokens.clone(),
+                    language.clone(),
+                    audio_filename_opt.clone(),
+                    run_idx,
+                );
+                if completed_keys.contains(&key) {
+                    debug!(
+                        "benchmark: resume skip (already done) run {}/{} model={} audio={:?} prompt={:?} sot={:?} lang={}",
+                        run_idx + 1,
+                        runs_per_condition,
+                        spec.model_id,
+                        audio_filename_opt,
+                        effective_initial_prompt.as_ref().map(|s| s.chars().take(40).collect::<String>()),
+                        applied_sot_lang_tokens,
+                        language
+                    );
+                    continue;
+                }
+
+                info!(
+                    "benchmark: measure run {}/{} model={} audio={:?} prompt={} anti_halluc={} path={}",
                     run_idx + 1,
                     runs_per_condition,
                     spec.model_id,
-                    effective_initial_prompt.as_ref().map(|s| s.chars().take(40).collect::<String>()),
-                    applied_sot_lang_tokens,
-                    language
+                    audio_filename_opt,
+                    spec.use_prompt,
+                    spec.use_anti_halluc,
+                    if long_form_cfg.is_some() { "long-form" } else { "single-shot" }
                 );
-                continue;
-            }
 
-            info!(
-                "benchmark: measure run {}/{} model={} prompt={} anti_halluc={} path={}",
-                run_idx + 1,
-                runs_per_condition,
-                spec.model_id,
-                spec.use_prompt,
-                spec.use_anti_halluc,
-                if long_form_cfg.is_some() { "long-form" } else { "single-shot" }
-            );
-
-            let start = Instant::now();
-            let (text_result, chunks): (Result<String>, u32) = match &long_form_cfg {
-                Some(cfg) => match transcription_manager
-                    .transcribe_long_form(audio_benchmark.clone(), cfg.clone())
-                {
-                    Ok(r) => (Ok(r.text), r.chunk_count),
-                    Err(e) => (Err(e), 0),
-                },
-                None => match transcription_manager.transcribe(audio_benchmark.clone()) {
-                    Ok(t) => (Ok(t), 1),
-                    Err(e) => (Err(e), 0),
-                },
-            };
-            let elapsed_ms = start.elapsed().as_millis() as u64;
-
-            // Pull the SOT prompt_init tokens captured by TranscriptionManager
-            // from the decoder's state (LID-hack provenance). Consuming take:
-            // each run owns its snapshot; next iteration re-captures or clears.
-            let decoder_prompt_init_tokens = transcription_manager.take_last_whisper_prompt_init();
-
-            let record = match text_result {
-                Ok(text) => BenchmarkRunRecord {
-                    model_id: spec.model_id.to_string(),
-                    model_name: model_name.clone(),
-                    engine: spec.engine_label.to_string(),
-                    use_prompt: spec.use_prompt,
-                    use_anti_halluc: spec.use_anti_halluc,
-                    run_idx,
-                    language: language.clone(),
-                    translate: false,
-                    transcription_prompt: applied_prompt.clone(),
-                    custom_words: applied_custom_words.clone(),
-                    transcribe_time_ms: elapsed_ms,
-                    rtf: if audio_duration_s > 0.0 {
-                        elapsed_ms as f64 / (audio_duration_s * 1000.0)
-                    } else {
-                        0.0
+                let start = Instant::now();
+                let (text_result, chunks): (Result<String>, u32) = match &long_form_cfg {
+                    Some(cfg) => match transcription_manager
+                        .transcribe_long_form(audio_samples.clone(), cfg.clone())
+                    {
+                        Ok(r) => (Ok(r.text), r.chunk_count),
+                        Err(e) => (Err(e), 0),
                     },
-                    text,
-                    error: None,
-                    chunk_count: chunks,
-                    max_chunk_secs,
-                    sot_lang_tokens: applied_sot_lang_tokens.clone(),
-                    effective_initial_prompt: effective_initial_prompt.clone(),
-                    effective_n_max_text_ctx,
-                    effective_entropy_thold,
-                    decoder_prompt_init_tokens: decoder_prompt_init_tokens.clone(),
-                },
-                Err(e) => BenchmarkRunRecord {
-                    model_id: spec.model_id.to_string(),
-                    model_name: model_name.clone(),
-                    engine: spec.engine_label.to_string(),
-                    use_prompt: spec.use_prompt,
-                    use_anti_halluc: spec.use_anti_halluc,
-                    run_idx,
-                    language: language.clone(),
-                    translate: false,
-                    transcription_prompt: applied_prompt.clone(),
-                    custom_words: applied_custom_words.clone(),
-                    transcribe_time_ms: elapsed_ms,
-                    rtf: 0.0,
-                    text: String::new(),
-                    error: Some(e.to_string()),
-                    chunk_count: chunks,
-                    max_chunk_secs,
-                    sot_lang_tokens: applied_sot_lang_tokens.clone(),
-                    effective_initial_prompt: effective_initial_prompt.clone(),
-                    effective_n_max_text_ctx,
-                    effective_entropy_thold,
-                    decoder_prompt_init_tokens,
-                },
-            };
-            runs.push(record);
+                    None => match transcription_manager.transcribe(audio_samples.clone()) {
+                        Ok(t) => (Ok(t), 1),
+                        Err(e) => (Err(e), 0),
+                    },
+                };
+                let elapsed_ms = start.elapsed().as_millis() as u64;
 
-            // Per-run checkpoint. Keeps the crash-loss bounded to the single
-            // in-flight transcribe (the new record is already in `runs` by
-            // this point, so it survives too). Overwrites the same per-input-
-            // file path each time. ~50ms write overhead vs ~50s transcribe —
-            // negligible.
-            if let Err(e) = write_checkpoint(
-                &ckpt_json_path,
-                &ckpt_md_path,
-                &output_dir_path,
-                &file_path,
-                &warmup_path,
-                audio_duration_s,
-                runs_per_condition,
-                &runs,
-            ) {
-                log::warn!(
-                    "benchmark: failed to write checkpoint after run {}/{} model {}: {}",
-                    run_idx + 1,
+                // Pull the SOT prompt_init tokens captured by TranscriptionManager
+                // from the decoder's state (LID-hack provenance). Consuming take:
+                // each run owns its snapshot; next iteration re-captures or clears.
+                let decoder_prompt_init_tokens =
+                    transcription_manager.take_last_whisper_prompt_init();
+
+                let record = match text_result {
+                    Ok(text) => BenchmarkRunRecord {
+                        model_id: spec.model_id.to_string(),
+                        model_name: model_name.clone(),
+                        engine: spec.engine_label.to_string(),
+                        use_prompt: spec.use_prompt,
+                        use_anti_halluc: spec.use_anti_halluc,
+                        run_idx,
+                        language: language.clone(),
+                        translate: false,
+                        transcription_prompt: applied_prompt.clone(),
+                        custom_words: applied_custom_words.clone(),
+                        transcribe_time_ms: elapsed_ms,
+                        rtf: if *audio_dur > 0.0 {
+                            elapsed_ms as f64 / (audio_dur * 1000.0)
+                        } else {
+                            0.0
+                        },
+                        text,
+                        error: None,
+                        chunk_count: chunks,
+                        max_chunk_secs,
+                        sot_lang_tokens: applied_sot_lang_tokens.clone(),
+                        effective_initial_prompt: effective_initial_prompt.clone(),
+                        effective_n_max_text_ctx,
+                        effective_entropy_thold,
+                        decoder_prompt_init_tokens: decoder_prompt_init_tokens.clone(),
+                        audio_file: audio_filename_opt.clone(),
+                    },
+                    Err(e) => BenchmarkRunRecord {
+                        model_id: spec.model_id.to_string(),
+                        model_name: model_name.clone(),
+                        engine: spec.engine_label.to_string(),
+                        use_prompt: spec.use_prompt,
+                        use_anti_halluc: spec.use_anti_halluc,
+                        run_idx,
+                        language: language.clone(),
+                        translate: false,
+                        transcription_prompt: applied_prompt.clone(),
+                        custom_words: applied_custom_words.clone(),
+                        transcribe_time_ms: elapsed_ms,
+                        rtf: 0.0,
+                        text: String::new(),
+                        error: Some(e.to_string()),
+                        chunk_count: chunks,
+                        max_chunk_secs,
+                        sot_lang_tokens: applied_sot_lang_tokens.clone(),
+                        effective_initial_prompt: effective_initial_prompt.clone(),
+                        effective_n_max_text_ctx,
+                        effective_entropy_thold,
+                        decoder_prompt_init_tokens,
+                        audio_file: audio_filename_opt.clone(),
+                    },
+                };
+                runs.push(record);
+
+                // Per-run checkpoint. Keeps the crash-loss bounded to the single
+                // in-flight transcribe (the new record is already in `runs` by
+                // this point, so it survives too). Overwrites the same per-input-
+                // file path each time. ~50ms write overhead vs ~50s transcribe —
+                // negligible.
+                if let Err(e) = write_checkpoint(
+                    &ckpt_json_path,
+                    &ckpt_md_path,
+                    &output_dir_path,
+                    &file_path,
+                    &warmup_path,
+                    audio_duration_s,
                     runs_per_condition,
-                    spec.model_id,
-                    e
-                );
-            } else {
-                debug!(
-                    "benchmark: checkpoint written after run {}/{} model {}",
-                    run_idx + 1,
-                    runs_per_condition,
-                    spec.model_id
-                );
+                    &runs,
+                ) {
+                    log::warn!(
+                        "benchmark: failed to write checkpoint after run {}/{} model {} audio {:?}: {}",
+                        run_idx + 1,
+                        runs_per_condition,
+                        spec.model_id,
+                        audio_filename_opt,
+                        e
+                    );
+                } else {
+                    debug!(
+                        "benchmark: checkpoint written after run {}/{} model {} audio {:?}",
+                        run_idx + 1,
+                        runs_per_condition,
+                        spec.model_id,
+                        audio_filename_opt
+                    );
+                }
             }
         }
     }
@@ -1164,8 +1607,7 @@ pub async fn benchmark_transcription_file(
 
     let json_text = serde_json::to_string_pretty(&report)
         .map_err(|e| format!("Failed to serialize report: {}", e))?;
-    std::fs::write(&json_path, json_text)
-        .map_err(|e| format!("Failed to write JSON: {}", e))?;
+    std::fs::write(&json_path, json_text).map_err(|e| format!("Failed to write JSON: {}", e))?;
 
     let md_text = build_markdown(&report);
     std::fs::write(&md_path, md_text).map_err(|e| format!("Failed to write MD: {}", e))?;

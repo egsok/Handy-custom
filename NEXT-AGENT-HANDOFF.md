@@ -1,3 +1,175 @@
+# Next Agent Handoff — D12 Overnight Run In Progress (empirical RTF calibration)
+
+**Date:** 2026-04-26 (overnight of 2026-04-25/26, in flight at handoff time)
+**Branch:** `bench/whisper-matrix+lid-hack` (tip: `e86758c` in Handy — unchanged)
+**User:** Egor
+
+## TL;DR (60 seconds)
+
+- **D12 night run is currently running.** 23 invocations driving 89 of 90 cids from `D:/dev/General tasks and research/asr_eval/artifacts/D12_overnight_inference_targets.md`. Started 2026-04-25 20:48Z; at handoff time **10/23 done in 7h20min, ~6h remaining**, ETA ~10:00Z / 13:00 МСК on 2026-04-26.
+- **Queue file:** `C:/Users/Egor Sokolov/Documents/REAPER Media/d12-night-run-queue.js`. Local scratch (not in repo). 23 invocations grouped by (prompt × language × audio_set), covering SP1/SP2 long-form (§A+§B+§C+§C2) and SP1/SP2 live (§D+§E).
+- **Universal `run_idx_offset = 50`** on every invocation. Avoids collision with all prior data (max prior n was 29). Eval driver dedups by `(cid, audio_file, run_idx)` and never relies on contiguity.
+- **One cid skipped: `breeze-asr__noprompt__auto__lid_en+ru__ah`** (§C row 30). The matrix at `benchmark.rs:42-50` has breeze noprompt+ah only with `["ru"]`, not `["en","ru"]`. Adding it would require a one-line `RunSpec` + cargo rebuild (~7 min). Deferred per the no-touch-`src-tauri/` discipline. The other 89 cids are covered.
+- **Empirical RTF calibration** (this is the load-bearing finding for next agents):
+
+  | model_id | observed RTF (sp1 long-form, /O2 binary) | D12 spec implied RTF |
+  |---|---|---|
+  | breeze-asr | **0.054** | ~0.055 |
+  | ggml-medium | **0.044** | ~0.045 |
+  | turbo | **0.017** | ~0.022 (D12 was 30% too pessimistic) |
+  | large | ~0.050 (assumed = breeze, both large-class) | ~0.051 |
+  | whisper-podlodka-turbo | ~0.020 (turbo family + margin) | not in §A-§C2 |
+
+  Pre-DRY estimates were guesswork; **post-DRY estimates landed within +1.7% mean error** vs actuals across the first 10 invocations. **Use observed RTFs above for any future budget calc; do NOT eyeball.**
+
+## What this session shipped
+
+1. Wrote `d12-night-run-queue.js` from scratch using the v17/R2 pattern. New fields used: `run_idx_offset` (universal 50), `audio_batch` (live invocations only), `only_conditions` (per-invocation pin), `prompt` override (V1/V2/V2b/V3/V4/null).
+2. **DRY validated.** Two reports verified end-to-end FFI chain: `effective_initial_prompt` populated correctly (None for noprompt, full Cyrillic V1 for prompt rows), `decoder_prompt_init_tokens` populated (`[50258, 50263, 50359]` = `<|sot|><|ru|><|transcribe|>` for breeze; turbo uses 50360 transcribe-token), `run_idx=50` confirmed, no transcribe errors.
+3. Refined wallclock estimate **using observed RTFs**, not vibes. Final: ~13.4h (vs handoff's "5–12h" guess). The +/-1.7% mean error against actuals proves the new estimating method.
+
+## Reports on disk (in flight)
+
+- **Long-form (single-file, anchored at REAPER Media/):** `C:/Users/Egor Sokolov/Documents/REAPER Media/benchmark-results-2026042{5,6}-*.json`. 13 invocations total (7 SP1 long + 6 SP2 long).
+- **Live (audio_batch, anchored at audio's parent):**
+  - `D:/dev/General tasks and research/asr_eval/artifacts/live_v1/audio_wav/benchmark-results-*.json` — 5 SP1 live invocations.
+  - `D:/dev/General tasks and research/asr_eval/artifacts/live_v1/audio_sp2/benchmark-results-*.json` — 5 SP2 live invocations.
+- All records carry `run_idx ∈ [50, 50 + Δ)` where Δ is the per-invocation `runsPerCondition`.
+- DRY records (run_idx=50, runs=1) for first 2 invocations were on disk before the full run started. Resume-from-checkpoint matches `(cid, audio_file, run_idx)`; the run_idx=50 slot for those 8 conditions was already filled by DRY records, so the full run wrote run_idx=51..71 for breeze-noprompt and run_idx=51..72 for V1.auto. Eval should treat that slot as authoritative (one record only per slot — not duplicated).
+
+## Working tree state
+
+Unchanged from prior 2026-04-25 handoff:
+
+```
+M src-tauri/Cargo.lock
+M src-tauri/src/commands/benchmark.rs
+M src-tauri/src/lib.rs
+M src/bindings.ts
+```
+
+No new commits this session. Last commit: `e86758c docs: update handoff after user-terminated night run + daily-use mode`. **Do not commit without explicit user instruction.**
+
+## When the queue finishes
+
+1. Verify all 23 expected JSON reports exist with the appropriate paths above.
+2. Spot-check the last invocation's report — `audio_file` field present in batch-mode records, `run_idx` ∈ [50, 50+Δ), `effective_initial_prompt` populated where prompt was non-null, no `error` fields populated in `runs[]`.
+3. Settings should be auto-restored by `SettingsGuard` to whatever was active when queue paste ran (daily-use config: breeze + LID=`["ru"]` + V2 prompt in UI, per prior handoff).
+4. Hand reportPaths off to analytical chat (D12 §H pipeline: re-aggregate metrics → re-run `_analysis_v25_quantization_audit.py` → `_analysis_v25_bootstrap.py` → CI flip check).
+
+## Notes for the next agent
+
+- **The queue runner uses the harness's resume-from-checkpoint based on `file_path` stem** (no explicit `resume_from` field). Re-paste of `d12-night-run-queue.js` after a crash is safe; harness will skip whatever already completed via the `(model_id, use_prompt, effective_initial_prompt, use_anti_halluc, sot_lang_tokens, language, audio_file, run_idx)` RunKey.
+- **Some over-runs by design.** Each invocation's `runsPerCondition` = max Δ among grouped cids; cids with smaller Δ get extra runs. Eval can subset by `run_idx` range later. Total over-run cost was budgeted into the 13.4h estimate.
+- **Top time sinks remaining:** `sp2.long.V3.auto` (~78 min, 22 runs × 6 conditions) is the biggest single invocation in the queue. After it finishes, only live remains (~3h, mostly cheap turbo).
+- **All open items from prior handoff still apply.** The "Pending cleanups before merging upstream" list in the v17 handoff below is still the punch list:
+  - revert TEMP `tauri/devtools` Cargo.toml feature
+  - revert `lib.rs:530-536` `open_devtools()` block
+  - decide on the 9 LID matrix rows (keep as feat or split into separate commits)
+  - 3 queue-runner files in REAPER Media/ are NOT in repo — local scratch
+  - bindings.ts auto-regenerates next dev/build
+
+## File paths quick reference
+
+- This handoff (top of file = newest): `D:/dev/Handy/NEXT-AGENT-HANDOFF.md`
+- D12 targets spec: `D:/dev/General tasks and research/asr_eval/artifacts/D12_overnight_inference_targets.md`
+- D12 queue file: `C:/Users/Egor Sokolov/Documents/REAPER Media/d12-night-run-queue.js` (23 invocations)
+- Plan file (this session): `C:/Users/Egor Sokolov/.claude/plans/d-dev-handy-next-agent-handoff-md-gleaming-mochi.md`
+- Active branch: `D:/dev/Handy` @ `bench/whisper-matrix+lid-hack` @ `e86758c` (uncommitted on top, same as prior handoff)
+- Forks unchanged: `D:/dev/whisper-rs-sys-fork` @ `198f290`, `whisper-rs-fork` @ `eb282bf`, `transcribe-rs-fork` @ `8454e4e`
+- Release binary in use: `D:/h/release/handy.exe` (mtime ~2026-04-25 22:00, /O2 + devtools).
+
+---
+
+# Next Agent Handoff — v17 + live_v1 R1/R2 Complete (audio_batch + run_idx_offset)
+
+**Date:** 2026-04-25 (overnight of 2026-04-24/25)
+**Branch:** `bench/whisper-matrix+lid-hack` (tip: `e86758c` in Handy; `198f290` in whisper-rs-sys-fork)
+**User:** Egor
+
+## TL;DR (90 seconds)
+
+- **Three night runs completed successfully.** v17 (508 runs ~3h actual), live_v1 Round 1 (34 invocations / ~7920 transcripts), live_v1 Round 2 (47 invocations / ~11468 transcripts, **205 min actual** vs 7h plan = exactly 2× off). All reports on disk; analytical chat owns aggregation.
+- **`benchmark.rs` significantly extended.** New fields and modes:
+  - `BenchmarkOverrides.audio_batch: Option<Vec<String>>` — switches harness to multi-file mode (model loads once per condition, iterates files × N runs). Single-file legacy path retained.
+  - `BenchmarkRunRecord.audio_file: Option<String>` — bare filename per record (e.g. `"live-18-7s.wav"`). None in single-file mode; Some(name) in batch mode.
+  - `BenchmarkOverrides.run_idx_offset: Option<u32>` — shifts `run_idx ∈ [offset, offset+N)`. Used by Round 2 T3 to append 8 runs (12..19) to Round 1 baseline (0..11) without collision when eval merges by `(cid, audio_file, run_idx)`.
+  - Resume-key includes `audio_file` + raw `run_idx`, so resume survives both batch mode and offset.
+  - All 4 `BenchmarkRunRecord` construction sites (success path + 3 error paths) updated for `audio_file` + offset.
+- **RUN_MATRIX grew from 38 → 47 rows** across three sessions:
+  - v17 (`feat: add 6 LID matrix rows`): +6 rows (4 breeze LID + 2 turbo LID)
+  - v20 R1 (`feat: add 2 LID matrix rows for live_v1 Tier 5`): +2 rows (podlodka [ru,en] + ggml-medium [ru,en])
+  - v20 R2 H37: +1 row (whisper-large-v3-russian noprompt+ah+[ru])
+- **DevTools auto-open shipped.** `lib.rs:530` calls `main_window.open_devtools()` after `win_builder.build()` — was needed because Tauri 2's `devtools` feature is API-only, F12 not bound by default. Both this AND the `tauri/devtools` Cargo.toml feature are TEMPORARY for benchmark work.
+- **Queue runners (production):**
+  - `C:/Users/Egor Sokolov/Documents/REAPER Media/night-run-queue-v17.js` — v17 (19 invocations, 508 runs)
+  - `C:/Users/Egor Sokolov/Documents/REAPER Media/live-v1-queue.js` — Round 1 (34 invocations, 4 scripted + 30 live × 22 audio × 12 runs)
+  - `C:/Users/Egor Sokolov/Documents/REAPER Media/live-v1-queue-r2-dry1.js` — Round 2 DRY-1 (audio_batch path on new audio)
+  - `C:/Users/Egor Sokolov/Documents/REAPER Media/live-v1-queue-r2-dry2.js` — Round 2 DRY-2 (H37 NEW row LID)
+  - `C:/Users/Egor Sokolov/Documents/REAPER Media/live-v1-queue-r2-prod.js` — Round 2 production (47 invocations / 11468 runs / T3 with `run_idx_offset: 12`)
+
+## Reports on disk (read-only inventory)
+
+- **v17 reports**: `C:/Users/Egor Sokolov/Documents/REAPER Media/benchmark-results-2026042{3,4}-*.json` (19 files spanning 23:31 Apr 23 → ~04:00 Apr 24).
+- **Round 1 reports**: same `REAPER Media/` folder for scripted-mode jobs; `D:/dev/General tasks and research/asr_eval/artifacts/live_v1/audio_wav/benchmark-results-*.json` for batch-mode jobs (audio_wav was first audio's parent, harness anchors there).
+- **Round 2 reports**: `audio_wav/benchmark-results-202604{24-22*,25-0*}*.json` — 50 files (3 DRY + 47 prod), spanning **22:02 Apr 24 → 01:25 Apr 25** ≈ 205 min total. Each prod report carries 22-37 audio × N runs. T3's 10 reports verified to have run_idx ∈ [12..19].
+
+## Working tree state (uncommitted)
+
+```
+M src-tauri/Cargo.lock          ← incidental (fork timestamps refreshed during builds)
+M src-tauri/src/commands/benchmark.rs  ← matrix +9 rows + audio_batch/audio_file/run_idx_offset
+M src-tauri/src/lib.rs          ← TEMP: open_devtools() in setup
+M src/bindings.ts               ← stale (auto-regen via tauri-specta on next dev/build)
+```
+
+Last commit: `e86758c docs: update handoff after user-terminated night run + daily-use mode`. Nothing committed since the prior 2026-04-23 handoff — all three night-run features are still uncommitted in working tree. User's pattern is to defer commits until ready to merge upstream; do NOT commit without explicit user instruction.
+
+## Pending cleanups before merging upstream
+
+1. **Cargo.toml `tauri/devtools` feature** (line 41) — TEMPORARY for benchmark F12 access. Revert before any release/main merge.
+2. **`lib.rs:530-536` `open_devtools()` block** — depends on the Cargo.toml feature above. Both must revert together; will fail to compile if only one is reverted (compile-time safety net is intentional).
+3. **9 matrix rows added** (lines 46-50, 58, 72-73, 91 area) — these are real LID variants the night-run system actually uses. Decision: keep them (they're feature work, not scaffolding) or revert and re-add via separate commits in proper feature-branch hygiene before PR. User previously expressed preference for a single squashed "feat(benchmark): LID-hack RUN_MATRIX additions" before main merge.
+4. **3 queue-runner files** in `REAPER Media/` are NOT in repo — they're user's local scratch. Don't try to commit them.
+5. **`bindings.ts`** — should auto-regenerate cleanly on next `bun run tauri dev`. If diff persists, force-regenerate with explicit specta export call.
+
+## Known good binary
+
+`D:/h/release/handy.exe` mtime `2026-04-25 ~22:00` (built last with H37 row + run_idx_offset + open_devtools). 104.78 MB. Includes `/O2` fix + `devtools` feature + auto-open DevTools call. Custom-signing error at end of `bun run tauri build` is expected and ignorable (just a missing optional bundling step; raw .exe is built fine).
+
+## Architecture notes for next agent
+
+**Audio_batch mode internals (`benchmark.rs:716-740` area):**
+- If `overrides.audio_batch` is `Some(non-empty)`: harness pre-loads ALL files into `Vec<(Option<String> filename, Vec<f32> samples, f64 dur)>` before main loop. Fail-fast on bad WAV — entire invocation aborts with clear error if any file fails to decode.
+- If `audio_batch` is None or empty: legacy single-file mode using positional `file_path` arg, `audio_file` field set to None on records (preserves backward compat with v17-style invocations).
+- `file_path` arg in batch mode is **label-only** — used for `report.input_file` and checkpoint filename, existence NOT checked. User passes labels like `"round2.T3.H05.br.V2.lid_ru.ah"`.
+- `output_dir_path` in batch mode anchors to parent of FIRST `audio_batch[0]` file (Round 2 → `audio_wav/`). In single-file mode, parent of `file_path`.
+
+**Run_idx_offset internals (`benchmark.rs:680, 1013, ~885, ~916`):**
+- Read once at function start: `let run_idx_offset = overrides.run_idx_offset.unwrap_or(0);`
+- All 4 `for run_idx in ...` loops shifted to `run_idx_offset..(run_idx_offset + runs_per_condition)` — covers success path + 2 error paths (model not downloaded, switch_active_model failed) + the resume-key construction.
+- Resume-from-checkpoint compares full RunKey including `run_idx` directly (no offset compensation needed) — different offsets produce distinct keys, can coexist in the same checkpoint history.
+
+**Eval driver responsibilities (analytical chat scope, NOT this agent's):**
+- `live_v1_eval.py` and `live_v1_report.py` parse `runs[]` from each JSON, group by `(model_id, use_prompt, use_anti_halluc, sot_lang_tokens, effective_initial_prompt, language, audio_file)` to derive `condition_id`, then merge across all matching JSONs.
+- T3 N=20 emerges automatically: Round 1 contributes run_idx 0..11 (one JSON per condition), Round 2 T3 contributes run_idx 12..19 (separate JSON per condition with offset=12). Eval driver dedups by `(cid, audio_file, run_idx)` across all files.
+
+## Time-estimate calibration note
+
+My estimates for these long runs were ~2× too pessimistic on `/O2` fast binary:
+- v17: planned ~4.2h, actual ~3h.
+- live_v1 Round 2: planned ~7h (~420 min), actual ~205 min — user explicitly flagged.
+**Cause:** I apply ~30% reload overhead, but on this hardware overhead is closer to 5–10%; RTF is ~0.04, not 0.05. **Calibration:** for next overnight run, present user with a range like "X/2 to X" or "expect lower bound on /O2 fast binary".
+
+## File paths quick reference
+
+- This handoff (top of file = newest): `D:/dev/Handy/NEXT-AGENT-HANDOFF.md`
+- Plan file: `C:/Users/Egor Sokolov/.claude/plans/d-dev-handy-next-agent-handoff-md-expressive-bird.md`
+- Active branch: `D:/dev/Handy` @ `bench/whisper-matrix+lid-hack` @ `e86758c` (uncommitted on top)
+- Forks unchanged from prior handoff: `D:/dev/whisper-rs-sys-fork` @ `198f290`, `whisper-rs-fork` @ `eb282bf`, `transcribe-rs-fork` @ `8454e4e`
+
+---
+
 # Next Agent Handoff — Night-Run Orchestration + MSVC /O2 Fix
 
 **Date:** 2026-04-23 (overnight of 2026-04-22/23)

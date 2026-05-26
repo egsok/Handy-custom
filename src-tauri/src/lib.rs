@@ -501,8 +501,12 @@ pub fn run(cli_args: CliArgs) {
         builder = builder.plugin(tauri_nspanel::init());
     }
 
-    builder
-        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+    // Multi-process bench escape hatch: HANDY_DISABLE_SINGLE_INSTANCE=1 skips the
+    // OS-mutex single-instance lock so 2-3 portable handy.exe copies can run in parallel
+    // (e.g. for D13 medium-form parallel inference). Without the env var, behavior is
+    // unchanged: second launch sends a CLI signal to the running instance and exits.
+    if std::env::var("HANDY_DISABLE_SINGLE_INSTANCE").is_err() {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             if args.iter().any(|a| a == "--toggle-transcription") {
                 signal_handle::send_transcription_input(app, "transcribe", "CLI");
             } else if args.iter().any(|a| a == "--toggle-post-process") {
@@ -512,7 +516,10 @@ pub fn run(cli_args: CliArgs) {
             } else {
                 show_main_window(app);
             }
-        }))
+        }));
+    }
+
+    builder
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
