@@ -1,4 +1,6 @@
-use crate::audio_toolkit::{apply_custom_words, filter_transcription_output};
+use crate::audio_toolkit::{
+    apply_custom_words, filter_transcription_output, fix_word_boundary_glue,
+};
 use crate::managers::audio::AudioRecordingManager;
 use crate::managers::model::{EngineType, ModelManager};
 use crate::settings::{
@@ -700,9 +702,19 @@ impl TranscriptionManager {
             result.text
         };
 
+        // Breeze ASR's Mandarin code-switch training glues sentence boundaries
+        // on Cyrillic and Cyrillic↔Latin output. Run unglue BEFORE filler
+        // filtering so word-boundary regexes inside filter_transcription_output
+        // match correctly on what would otherwise be a single token.
+        let unglued_result = if settings.selected_model == "breeze-asr" {
+            fix_word_boundary_glue(&corrected_result)
+        } else {
+            corrected_result
+        };
+
         // Filter out filler words and hallucinations
         let filtered_result = filter_transcription_output(
-            &corrected_result,
+            &unglued_result,
             &settings.app_language,
             &settings.custom_filler_words,
         );
