@@ -572,6 +572,20 @@ impl TranscriptionManager {
                                         Some(parts.join("\n\n"))
                                     }
                                 },
+                                // Anti-hallucination: cap cross-segment context to break
+                                // feedback loops, drop low-confidence (often hallucinated)
+                                // segments. Toggleable via settings.
+                                // Per OpenWhispr PR #552 / whisper.cpp#1507.
+                                n_max_text_ctx: if settings.whisper_anti_hallucination {
+                                    Some(128)
+                                } else {
+                                    None
+                                },
+                                entropy_thold: if settings.whisper_anti_hallucination {
+                                    Some(2.8)
+                                } else {
+                                    None
+                                },
                                 ..Default::default()
                             };
 

@@ -432,6 +432,11 @@ pub struct AppSettings {
     pub extra_recording_buffer_ms: u64,
     #[serde(default)]
     pub transcription_prompt: Option<String>,
+    /// When true, applies n_max_text_ctx=128 + entropy_thold=2.8 to break
+    /// cross-segment hallucination loops (per OpenWhispr PR #552 /
+    /// whisper.cpp#1507). Whisper-only; no-op for ONNX engines.
+    #[serde(default)]
+    pub whisper_anti_hallucination: bool,
 }
 
 fn default_model() -> String {
@@ -817,6 +822,7 @@ pub fn get_default_settings() -> AppSettings {
         whisper_gpu_device: default_whisper_gpu_device(),
         extra_recording_buffer_ms: 0,
         transcription_prompt: None,
+        whisper_anti_hallucination: false,
     }
 }
 
