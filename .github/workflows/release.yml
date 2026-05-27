@@ -1,6 +1,9 @@
 name: "Release"
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*-*']
 
 jobs:
   create-release:
@@ -46,35 +49,50 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: "macos-26" # for Arm based macs (M1 and above). Uses macOS 26 for Apple Intelligence SDK.
+          - platform: "macos-14" # ARM macs (Apple Silicon) — experimental, untested by maintainer
             args: "--target aarch64-apple-darwin"
             target: "aarch64-apple-darwin"
-          - platform: "macos-latest" # for Intel based macs.
+          - platform: "macos-15-intel" # Intel macs — experimental, untested by maintainer
             args: "--target x86_64-apple-darwin"
             target: "x86_64-apple-darwin"
-          - platform: "ubuntu-22.04" # Build .deb on 22.04
+          - platform: "ubuntu-22.04" # .deb (with ONNX Runtime injection)
             args: "--bundles deb"
             target: "x86_64-unknown-linux-gnu"
-          - platform: "ubuntu-24.04" # Build AppImage and RPM on 24.04
+          - platform: "ubuntu-24.04" # AppImage + RPM
             args: "--bundles appimage,rpm"
             target: "x86_64-unknown-linux-gnu"
-          - platform: "ubuntu-24.04-arm" # Build for ARM64 Linux
-            args: "--bundles appimage,deb,rpm"
-            target: "aarch64-unknown-linux-gnu"
           - platform: "windows-latest"
             args: ""
             target: "x86_64-pc-windows-msvc"
-          - platform: "windows-11-arm" # for ARM64 Windows runner
-            args: "--target aarch64-pc-windows-msvc"
-            target: "aarch64-pc-windows-msvc"
 
     uses: ./.github/workflows/build.yml
     with:
       platform: ${{ matrix.platform }}
       target: ${{ matrix.target }}
       build-args: ${{ matrix.args }}
-      sign-binaries: true
+      sign-binaries: false
       asset-prefix: "handy"
       upload-artifacts: false
       release-id: ${{ needs.create-release.outputs.release-id }}
     secrets: inherit
+
+  publish-release:
+    permissions:
+      contents: write
+    needs: [create-release, publish-tauri]
+    runs-on: ubuntu-latest
+    if: success()
+    steps:
+      - name: Prepend Download link to release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BODY="$(gh release view "v${{ needs.create-release.outputs.version }}" --json body -q .body --repo "${{ github.repository }}")"
+          gh release edit "v${{ needs.create-release.outputs.version }}" \
+            --notes "$(printf 'See [Installation instructions](https://github.com/egsok/Handy-custom#download) in README.\n\n%s' "$BODY")" \
+            --repo "${{ github.repository }}"
+
+      - name: Flip draft to false
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "v${{ needs.create-release.outputs.version }}" --draft=false --repo "${{ github.repository }}"

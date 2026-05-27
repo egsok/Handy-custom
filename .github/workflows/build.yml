@@ -401,13 +401,13 @@ jobs:
           retention-days: 30
 
       - name: Install FUSE for AppImage processing
-        if: contains(inputs.platform, 'ubuntu')
+        if: contains(inputs.platform, 'ubuntu') && contains(inputs.build-args, 'appimage')
         run: |
           sudo apt-get update
           sudo apt-get install -y fuse libfuse2
 
       - name: Remove libwayland-client.so from AppImage
-        if: contains(inputs.platform, 'ubuntu')
+        if: contains(inputs.platform, 'ubuntu') && contains(inputs.build-args, 'appimage')
         run: |
           # Find the AppImage file
           APPIMAGE_PATH=$(find src-tauri/target/${{ steps.build-profile.outputs.profile }}/bundle/appimage -name "*.AppImage" | head -1)
@@ -455,6 +455,16 @@ jobs:
             echo "libwayland-client.so removed from AppImage successfully"
           else
             echo "No AppImage found to process"
+          fi
+
+      - name: Re-upload post-processed AppImage to release
+        if: contains(inputs.build-args, 'appimage') && inputs.release-id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APPIMAGE=$(find src-tauri/target/${{ steps.build-profile.outputs.profile }}/bundle/appimage -name "*.AppImage" -type f | head -1)
+          if [ -n "$APPIMAGE" ]; then
+            gh release upload "v${{ steps.get-version.outputs.version }}" "$APPIMAGE" --clobber --repo "${{ github.repository }}"
           fi
 
       - name: Upload artifacts (Linux)

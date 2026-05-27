@@ -2413,7 +2413,7 @@ dependencies = [
 
 [[package]]
 name = "handy"
-version = "0.8.3"
+version = "0.8.3-1"
 dependencies = [
  "anyhow",
  "arboard",
@@ -6994,8 +6994,7 @@ dependencies = [
 [[package]]
 name = "transcribe-rs"
 version = "0.3.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b231bc9bd1b20be89583a49c3885dfa7d7323299564ee78eddf83db04f2b337b"
+source = "git+https://github.com/egsok/transcribe-rs-fork.git?branch=daily-stable#a8f2f1e295ad40710d2c69738d0b05bd34f1cd0c"
 dependencies = [
  "base64 0.22.1",
  "derive_builder",
@@ -7703,8 +7702,7 @@ dependencies = [
 [[package]]
 name = "whisper-rs-sys"
 version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6986c0fe081241d391f09b9a071fbcbb59720c3563628c3c829057cf69f2a56f"
+source = "git+https://github.com/egsok/whisper-rs-sys-fork.git?branch=daily-stable#52fe4c79b80d998af48d9f54f70574d6fde264a1"
 dependencies = [
  "bindgen",
  "cfg-if",
