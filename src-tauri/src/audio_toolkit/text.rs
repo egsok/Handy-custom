@@ -702,26 +702,17 @@ mod tests {
             fix_word_boundary_glue("работает.И завтра"),
             "работает. И завтра"
         );
-        assert_eq!(
-            fix_word_boundary_glue("вышло.А вот"),
-            "вышло. А вот"
-        );
+        assert_eq!(fix_word_boundary_glue("вышло.А вот"), "вышло. А вот");
     }
 
     #[test]
     fn glue_cyr_period_single_letter_at_eol() {
-        assert_eq!(
-            fix_word_boundary_glue("конец.Я."),
-            "конец. Я."
-        );
+        assert_eq!(fix_word_boundary_glue("конец.Я."), "конец. Я.");
     }
 
     #[test]
     fn glue_lat_period_single_cyr_letter() {
-        assert_eq!(
-            fix_word_boundary_glue("done.А завтра"),
-            "done. А завтра"
-        );
+        assert_eq!(fix_word_boundary_glue("done.А завтра"), "done. А завтра");
     }
 
     #[test]
