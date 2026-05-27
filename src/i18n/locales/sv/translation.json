@@ -356,6 +356,35 @@
         "add": "Lägg till",
         "remove": "Ta bort {{word}}",
         "duplicate": "\"{{word}}\" finns redan"
+      },
+      "whisperAntiHallucination": {
+        "label": "Anti-hallucination (Whisper)",
+        "description": "Caps cross-segment context (n_max_text_ctx=128) and drops low-confidence segments (entropy_thold=2.8). Reduces repetition loops and made-up phrases on long Whisper transcriptions. No-op for non-Whisper engines."
+      },
+      "transcriptionPrompt": {
+        "title": "Transcription Prompt",
+        "description": "Provide context or style hints to guide Whisper's punctuation, capitalization, and domain-specific vocabulary. Only applies to Whisper models.",
+        "placeholder": "e.g. Use proper punctuation and capitalization. This is a technical discussion about software engineering.",
+        "tokenBudgetHint": "Shares a token budget with Custom Words — a shorter prompt leaves more room for custom words.",
+        "languageWarning": "When Transcription Language is set to \"Auto\", a prompt may reduce language detection accuracy.",
+        "whisperOnly": "This setting only applies to Whisper models. It will be ignored for the currently selected model.",
+        "presets": {
+          "label": "Presets",
+          "none": "None",
+          "english": "English",
+          "spanish": "Español",
+          "french": "Français",
+          "german": "Deutsch",
+          "portuguese": "Português",
+          "italian": "Italiano",
+          "russianV1": "V1 — Русский",
+          "ruEnV2": "V2 — Ru-En (code-switch)",
+          "ruEnV3": "V3 — Ru-En (instruction)",
+          "ruEnV4": "V4 — Ru-En (example)",
+          "japanese": "日本語",
+          "chineseSimplified": "中文（简体）",
+          "chineseTraditional": "中文（繁體）"
+        }
       }
     },
     "postProcessing": {
