@@ -24,7 +24,13 @@ Pre-built installers are published to [Releases](https://github.com/egsok/Handy-
 
 - **Windows:** download `Handy_0.8.3-N_x64-setup.exe` (NSIS) or `.msi` (N is the fork release number — 1, 2, ...). On first launch Windows SmartScreen will show "Windows protected your PC" — click **More info** → **Run anyway**. The binary is unsigned (see Build below).
 - **Linux:** download `Handy_..._amd64.deb` / `.AppImage` / `.rpm` for your distro.
-- **macOS:** download `Handy_..._x64.dmg` (Intel) or `Handy_..._aarch64.dmg` (Apple Silicon), drag `Handy.app` to `/Applications`. On first launch macOS will show **"Handy is damaged and can't be opened, you should move it to the Bin"** — this is misleading; the app is not damaged, it's just unsigned and quarantined. Fix by removing the quarantine attribute in Terminal:
+- **macOS:** two builds — pick by your Mac's chip:
+  - `Handy_..._aarch64.dmg` — **Apple Silicon** Mac (M1 / M2 / M3 / M4, models from late 2020 onwards)
+  - `Handy_..._x64.dmg` — **Intel** Mac (older models, ~2006–2020)
+
+  Not sure which? Click  → **About This Mac**. If it lists a "Chip" like "Apple M1" → `aarch64`. If it lists a "Processor" like "Intel Core i7" → `x64`.
+
+  Drag `Handy.app` to `/Applications`. On first launch macOS will show **"Handy is damaged and can't be opened, you should move it to the Bin"** — this is misleading; the app is not damaged, it's just unsigned and quarantined. Fix by removing the quarantine attribute in Terminal:
   ```bash
   xattr -d com.apple.quarantine /Applications/Handy.app
   ```

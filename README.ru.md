@@ -24,7 +24,13 @@
 
 - **Windows:** скачай `Handy_0.8.3-N_x64-setup.exe` (NSIS) или `.msi` (N — номер форк-релиза: 1, 2, ...). При первом запуске Windows SmartScreen покажет "Windows protected your PC" — кликни **More info** → **Run anyway**. Бинарь не подписан (см. Сборка ниже).
 - **Linux:** скачай `Handy_..._amd64.deb` / `.AppImage` / `.rpm` под свой дистрибутив.
-- **macOS:** скачай `Handy_..._x64.dmg` (Intel) или `Handy_..._aarch64.dmg` (Apple Silicon), перетащи `Handy.app` в `/Applications`. При первом запуске macOS покажет **"Handy is damaged and can't be opened, you should move it to the Bin"** — это вводящее в заблуждение сообщение; приложение не повреждено, оно просто не подписано и помечено quarantine-атрибутом при скачивании. Фикс — удалить quarantine через Терминал:
+- **macOS:** две сборки — выбирай по чипу твоего Mac'а:
+  - `Handy_..._aarch64.dmg` — **Apple Silicon** Mac (M1 / M2 / M3 / M4, модели с конца 2020 года и новее)
+  - `Handy_..._x64.dmg` — **Intel** Mac (старые модели, ~2006–2020)
+
+  Не уверен какой у тебя? Клик по  → **About This Mac** (или «Об этом Mac»). Если строка "Chip" / «Чип» с надписью "Apple M1" и т.п. → нужен `aarch64`. Если строка "Processor" / «Процессор» с "Intel Core ..." → нужен `x64`.
+
+  Перетащи `Handy.app` в `/Applications`. При первом запуске macOS покажет **"Handy is damaged and can't be opened, you should move it to the Bin"** — это вводящее в заблуждение сообщение; приложение не повреждено, оно просто не подписано и помечено quarantine-атрибутом при скачивании. Фикс — удалить quarantine через Терминал:
   ```bash
   xattr -d com.apple.quarantine /Applications/Handy.app
   ```
