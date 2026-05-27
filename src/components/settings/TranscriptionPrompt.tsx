@@ -40,7 +40,10 @@ const PRESETS: Record<string, string> = {
   german: `Hallo! Wie geht es Ihnen? Er sagte: „Machen wir es heute — solange wir Zeit haben." So einfach ist es nicht.`,
   portuguese: `Olá! Como você está? Ele disse: "Vamos fazer isso hoje — enquanto temos tempo." Claro, não é tão simples.`,
   italian: `Ciao! Come stai? Ha detto: "Facciamolo oggi — finché abbiamo tempo." Non è così semplice.`,
-  russian: `Привет! Как дела? Он сказал: «Сделаем это сегодня — пока есть время». Конечно, не всё так просто; нужно учесть погоду.`,
+  russian_v1: `Привет! Как дела? Он сказал: «Сделаем это сегодня — пока есть время». Конечно, не всё так просто, как кажется на первый взгляд; нужно принять во внимание погоду.`,
+  ru_en_v2: `Привет! Как дела? Наш English-speaking friend сказал: «Сделаем это сегодня — пока есть время». Мы выполняли эту разработку в Claude Code. Конечно, не всё так просто; нужно учесть погоду.`,
+  ru_en_v3: `Bilingual Russian-English speech transcription. Russian text with embedded English IT terms. Preserve English in Latin: Claude Code, GitHub, feature branch, CI/CD pipeline, deployment.`,
+  ru_en_v4: `This is a recording where a bilingual speaker uses Russian and English. English words and terms are preserved in Latin script. Example: «Мы задеплоили feature в production через CI/CD pipeline, используя для этого Claude Code».`,
   japanese: `こんにちは！元気ですか？「今日やりましょう。」もちろん、簡単ではない。`,
   chinese_simplified: `你好！你怎么样？他说："今天就做吧。"当然，事情没那么简单。`,
   chinese_traditional: `你好！你怎麼樣？他說：「今天就做吧。」當然，事情沒那麼簡單。`,
@@ -54,8 +57,7 @@ export const TranscriptionPrompt: React.FC<TranscriptionPromptProps> =
     const selectedLanguage = getSetting("selected_language");
     const currentModelId = useModelStore((s) => s.currentModel);
     const getModelInfo = useModelStore((s) => s.getModelInfo);
-    const isWhisper =
-      getModelInfo(currentModelId)?.engine_type === "Whisper";
+    const isWhisper = getModelInfo(currentModelId)?.engine_type === "Whisper";
     const [localValue, setLocalValue] = useState(currentPrompt);
     const [isDirty, setIsDirty] = useState(false);
 
@@ -95,8 +97,20 @@ export const TranscriptionPrompt: React.FC<TranscriptionPromptProps> =
           label: t("settings.advanced.transcriptionPrompt.presets.italian"),
         },
         {
-          value: "russian",
-          label: t("settings.advanced.transcriptionPrompt.presets.russian"),
+          value: "russian_v1",
+          label: t("settings.advanced.transcriptionPrompt.presets.russianV1"),
+        },
+        {
+          value: "ru_en_v2",
+          label: t("settings.advanced.transcriptionPrompt.presets.ruEnV2"),
+        },
+        {
+          value: "ru_en_v3",
+          label: t("settings.advanced.transcriptionPrompt.presets.ruEnV3"),
+        },
+        {
+          value: "ru_en_v4",
+          label: t("settings.advanced.transcriptionPrompt.presets.ruEnV4"),
         },
         {
           value: "japanese",

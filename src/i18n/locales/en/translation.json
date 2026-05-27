@@ -377,7 +377,10 @@
           "german": "Deutsch",
           "portuguese": "Português",
           "italian": "Italiano",
-          "russian": "Русский",
+          "russianV1": "V1 — Русский",
+          "ruEnV2": "V2 — Ru-En (code-switch)",
+          "ruEnV3": "V3 — Ru-En (instruction)",
+          "ruEnV4": "V4 — Ru-En (example)",
           "japanese": "日本語",
           "chineseSimplified": "中文（简体）",
           "chineseTraditional": "中文（繁體）"
