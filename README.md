@@ -24,7 +24,11 @@ Pre-built installers are published to [Releases](https://github.com/egsok/Handy-
 
 - **Windows:** download `Handy_0.8.3-N_x64-setup.exe` (NSIS) or `.msi` (N is the fork release number — 1, 2, ...). On first launch Windows SmartScreen will show "Windows protected your PC" — click **More info** → **Run anyway**. The binary is unsigned (see Build below).
 - **Linux:** download `Handy_..._amd64.deb` / `.AppImage` / `.rpm` for your distro.
-- **macOS (experimental):** download `Handy_..._x64.dmg` (Intel) or `Handy_..._aarch64.dmg` (Apple Silicon). Gatekeeper will refuse to launch the unsigned app — workaround: in Finder, right-click `Handy.app` → **Open** → **Open** again in the confirmation dialog. Or from terminal: `xattr -d com.apple.quarantine /Applications/Handy.app`. Note: macOS builds in v1 are CI-built but not tested by me — please report breakage in [issues](https://github.com/egsok/Handy-custom/issues).
+- **macOS:** download `Handy_..._x64.dmg` (Intel) or `Handy_..._aarch64.dmg` (Apple Silicon), drag `Handy.app` to `/Applications`. On first launch macOS will show **"Handy is damaged and can't be opened, you should move it to the Bin"** — this is misleading; the app is not damaged, it's just unsigned and quarantined. Fix by removing the quarantine attribute in Terminal:
+  ```bash
+  xattr -d com.apple.quarantine /Applications/Handy.app
+  ```
+  (If that errors with permission, try `sudo xattr -cr /Applications/Handy.app`.) After this the app launches normally. The right-click → Open workaround that older guides mention no longer works on macOS 15+ for unsigned apps. Please report any post-launch issues in [issues](https://github.com/egsok/Handy-custom/issues).
 
 ## Build
 
