@@ -28,12 +28,14 @@ Pre-built installers are published to [Releases](https://github.com/egsok/Handy-
   - `Handy_..._aarch64.dmg` — **Apple Silicon** Mac (M1 / M2 / M3 / M4, models from late 2020 onwards)
   - `Handy_..._x64.dmg` — **Intel** Mac (older models, ~2006–2020)
 
-  Not sure which? Click  → **About This Mac**. If it lists a "Chip" like "Apple M1" → `aarch64`. If it lists a "Processor" like "Intel Core i7" → `x64`.
+  Not sure which? Click → **About This Mac**. If it lists a "Chip" like "Apple M1" → `aarch64`. If it lists a "Processor" like "Intel Core i7" → `x64`.
 
   Drag `Handy.app` to `/Applications`. On first launch macOS will show **"Handy is damaged and can't be opened, you should move it to the Bin"** — this is misleading; the app is not damaged, it's just unsigned and quarantined. Fix by removing the quarantine attribute in Terminal:
+
   ```bash
   xattr -d com.apple.quarantine /Applications/Handy.app
   ```
+
   (If that errors with permission, try `sudo xattr -cr /Applications/Handy.app`.) After this the app launches normally. The right-click → Open workaround that older guides mention no longer works on macOS 15+ for unsigned apps. Please report any post-launch issues in [issues](https://github.com/egsok/Handy-custom/issues).
 
 ## Build

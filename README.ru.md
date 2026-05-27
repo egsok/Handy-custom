@@ -28,12 +28,14 @@
   - `Handy_..._aarch64.dmg` — **Apple Silicon** Mac (M1 / M2 / M3 / M4, модели с конца 2020 года и новее)
   - `Handy_..._x64.dmg` — **Intel** Mac (старые модели, ~2006–2020)
 
-  Не уверен какой у тебя? Клик по  → **About This Mac** (или «Об этом Mac»). Если строка "Chip" / «Чип» с надписью "Apple M1" и т.п. → нужен `aarch64`. Если строка "Processor" / «Процессор» с "Intel Core ..." → нужен `x64`.
+  Не уверен какой у тебя? Клик по → **About This Mac** (или «Об этом Mac»). Если строка "Chip" / «Чип» с надписью "Apple M1" и т.п. → нужен `aarch64`. Если строка "Processor" / «Процессор» с "Intel Core ..." → нужен `x64`.
 
   Перетащи `Handy.app` в `/Applications`. При первом запуске macOS покажет **"Handy is damaged and can't be opened, you should move it to the Bin"** — это вводящее в заблуждение сообщение; приложение не повреждено, оно просто не подписано и помечено quarantine-атрибутом при скачивании. Фикс — удалить quarantine через Терминал:
+
   ```bash
   xattr -d com.apple.quarantine /Applications/Handy.app
   ```
+
   (Если ругнётся на permissions, попробуй `sudo xattr -cr /Applications/Handy.app`.) После этого приложение запускается нормально. Старый workaround "right-click → Open" на macOS 15+ для неподписанных приложений больше не работает. Баги после запуска репортить в [issues](https://github.com/egsok/Handy-custom/issues).
 
 ## Сборка
