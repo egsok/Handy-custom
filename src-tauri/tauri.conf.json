@@ -38,10 +38,7 @@
     ],
     "macOS": {
       "files": {},
-      "hardenedRuntime": true,
-      "minimumSystemVersion": "10.15",
-      "signingIdentity": "-",
-      "entitlements": "Entitlements.plist"
+      "minimumSystemVersion": "10.15"
     },
     "linux": {
       "deb": {
